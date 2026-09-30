@@ -2,8 +2,11 @@
 *.pid
 logs/*.pid
 
-# Session log active recording
-logs/current-session.csv
+# Session log active recording and archives
+logs/*.csv
+logs/archive/*.csv
+!logs/.gitkeep
+!logs/archive/.gitkeep
 
 # OS metadata
 Thumbs.db
