@@ -266,7 +266,7 @@ function Show-PartitionMenu {
         Write-LineClean ("=" * $termWidth) Cyan
         Write-LineClean "" White
         Write-LineClean " Choose which partition to display:" White
-        Write-LineClean " (Use [↑ / ↓] Arrow Keys to navigate, [Enter] to select, or press [1-6])" DarkGray
+        Write-LineClean " (Use [Up / Down] Arrow Keys to navigate, [Enter] to select, or press [1-6])" DarkGray
         Write-LineClean "" White
 
         for ($i = 0; $i -lt $menuOptions.Count; $i++) {
@@ -274,7 +274,7 @@ function Show-PartitionMenu {
             $num = $i + 1
             if ($i -eq $selectedIndex) {
                 # Highlighted option with pointer in bright Green
-                $line = "  ► [$num] $($opt.Title.PadRight(28)) - $($opt.Desc)"
+                $line = "  > [$num] $($opt.Title.PadRight(28)) - $($opt.Desc)"
                 Write-LineClean $line Green
             } else {
                 # Inactive option in Gray
@@ -285,7 +285,7 @@ function Show-PartitionMenu {
 
         Write-LineClean "" White
         Write-LineClean ("-" * $termWidth) Cyan
-        Write-LineClean " Controls: [↑ / ↓] Move Selection  |  [Enter / Space] Launch  |  [1-6] Jump  |  [Q] Exit" DarkGray
+        Write-LineClean " Controls: [Up / Down] Move Selection  |  [Enter / Space] Launch  |  [1-6] Jump  |  [Q] Exit" DarkGray
         try { [Console]::Write("`e[J") } catch {}
 
         # Non-interactive fallback

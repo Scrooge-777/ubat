@@ -8,6 +8,10 @@
     - GPU configuration (NVIDIA GeForce, AMD Radeon, Intel Arc, iGPU)
     - Battery design and full capacity metrics
 #>
+param(
+    [switch]$ShowUi
+)
+
 function Get-HardwareProfile {
     $cs = $null; $bios = $null; $cpu = $null; $gpus = @(); $batt = $null; $fullCap = $null; $staticBatt = $null
     try { $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue } catch {}
@@ -50,6 +54,35 @@ function Get-HardwareProfile {
     } catch {}
     $totalRamGB = [math]::Round($totalRamMB / 1024, 2)
 
+    # Physical RAM Module details (DDR5 Clock, Manufacturer, Part Number)
+    $ramModules = @()
+    $ramSpeed = 0
+    try {
+        $physMem = Get-CimInstance Win32_PhysicalMemory -ErrorAction SilentlyContinue
+        foreach ($pm in $physMem) {
+            $ramModules += [PSCustomObject]@{
+                Bank         = $pm.BankLabel
+                Manufacturer = $pm.Manufacturer
+                PartNumber   = if ($pm.PartNumber) { $pm.PartNumber.Trim() } else { "Generic" }
+                SpeedMTs     = $pm.ConfiguredClockSpeed
+                CapacityGB   = [math]::Round($pm.Capacity / 1GB, 1)
+            }
+            if ($pm.ConfiguredClockSpeed -gt $ramSpeed) { $ramSpeed = $pm.ConfiguredClockSpeed }
+        }
+    } catch {}
+
+    # NVIDIA PCIe link state (e.g. Gen5 x8 vs Gen1 x1 idle)
+    $pcieLink = "N/A"
+    if ($hasNvidia) {
+        try {
+            $nvPcie = nvidia-smi --query-gpu=pcie.link.gen.current,pcie.link.width.current --format=csv,noheader,nounits 2>$null
+            if ($nvPcie) {
+                $pParts = $nvPcie.Trim() -split ','
+                $pcieLink = "Gen$($pParts[0].Trim()) x$($pParts[1].Trim())"
+            }
+        } catch {}
+    }
+
     return [PSCustomObject]@{
         Manufacturer = $mfg
         Model        = $model
@@ -62,6 +95,9 @@ function Get-HardwareProfile {
         HealthPct    = $healthPct
         TotalRamMB   = $totalRamMB
         TotalRamGB   = $totalRamGB
+        RamSpeedMTs  = $ramSpeed
+        RamModules   = $ramModules
+        GpuPcieLink  = $pcieLink
         GpuList      = $gpus
     }
 }
@@ -180,3 +216,29 @@ function Get-LiveMetrics {
         TopMem          = $topMem
     }
 }
+
+if ($ShowUi -or ($MyInvocation.InvocationName -and $MyInvocation.InvocationName -ne '.')) {
+    $p = Get-HardwareProfile
+    $m = Get-LiveMetrics -HardwareProfile $p
+    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Host "                  OMNI - PHYSICAL HARDWARE & SENSOR PROFILE" -ForegroundColor Yellow
+    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Host " System Model   : $($p.Manufacturer) $($p.Model)" -ForegroundColor White
+    Write-Host " CPU Details    : $($p.CpuName)" -ForegroundColor White
+    Write-Host " Memory (RAM)   : $($p.TotalRamGB) GB Total | $($p.RamSpeedMTs) MT/s Clock Speed" -ForegroundColor White
+    if ($p.RamModules) {
+        foreach ($mod in $p.RamModules) {
+            Write-Host "   Module       : $($mod.Bank) - $($mod.Manufacturer) $($mod.PartNumber) ($($mod.CapacityGB) GB @ $($mod.SpeedMTs) MT/s)" -ForegroundColor Gray
+        }
+    }
+    Write-Host " Primary GPU    : $(if ($p.DgpuName) { $p.DgpuName } else { 'Integrated Graphics' })" -ForegroundColor White
+    Write-Host " GPU PCIe Link  : $($p.GpuPcieLink)" -ForegroundColor White
+    Write-Host " Battery Health : $($p.HealthPct)% ($($p.FullCapMwh) mWh / $($p.DesignCapMwh) mWh)" -ForegroundColor White
+    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Host " Live CPU Load  : $($m.CpuLoad)%" -ForegroundColor White
+    Write-Host " Live RAM Used  : $($m.UsedRamGB) GB / $($m.TotalRamGB) GB ($($m.RamPercent)%)" -ForegroundColor White
+    $pwrStr = if ($m.PowerOnline) { "AC Connected" } else { "Battery Power ($($m.DischargeWatts) W)" }
+    Write-Host " Power Source   : $pwrStr" -ForegroundColor White
+    Write-Host "================================================================================" -ForegroundColor Cyan
+}
+

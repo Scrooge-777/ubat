@@ -155,6 +155,7 @@ $mainOptions = @(
     [PSCustomObject]@{ Key = "4"; Title = "CPU & Memory Hub";          Desc = "Multi-thread core loads, RAM volume & frequency limits" }
     [PSCustomObject]@{ Key = "5"; Title = "Process Manager Hub";       Desc = "Fast resource monitor & interactive PID killer" }
     [PSCustomObject]@{ Key = "6"; Title = "Session Logs & Reports";    Desc = "In-terminal session logs, analysis reports & folder access" }
+    [PSCustomObject]@{ Key = "7"; Title = "HWiNFO64 Sensor Hub";      Desc = "Launch HWiNFO64 v8.52 sensors & stream memory-mapped telemetry" }
     [PSCustomObject]@{ Key = "0"; Title = "Exit";                      Desc = "Exit OMNI toolkit" }
 )
 
@@ -178,7 +179,7 @@ while ($true) {
         Write-LineClean " Hardware: $($hw.Manufacturer) $($hw.Model)  |  CPU: $($hw.CpuName)" Gray
         Write-LineClean "" White
         Write-LineClean " Choose a hardware subsystem to inspect:" White
-        Write-LineClean " (Use [Up / Down] Arrow Keys to navigate, [Enter] to select, or tap [0-6])" DarkGray
+        Write-LineClean " (Use [Up / Down] Arrow Keys to navigate, [Enter] to select, or tap [0-7])" DarkGray
         Write-LineClean "" White
 
         for ($i = 0; $i -lt $mainOptions.Count; $i++) {
@@ -194,7 +195,7 @@ while ($true) {
 
         Write-LineClean "" White
         Write-LineClean ("-" * $termWidth) Cyan
-        Write-LineClean " Controls: [Up / Down] Move Selection  |  [Enter / Space] Select  |  [0-6] Quick Jump  |  [Q] Exit" DarkGray
+        Write-LineClean " Controls: [Up / Down] Move Selection  |  [Enter / Space] Select  |  [0-7] Quick Jump  |  [Q] Exit" DarkGray
         try { [Console]::Write("`e[J") } catch {}
 
         try {
@@ -232,7 +233,7 @@ while ($true) {
                 if ($ch -eq 'q' -or $ch -eq 'Q') {
                     $chosenKey = "0"
                     $exitMenu = $true
-                } elseif ($ch -match '^[0-6]$') {
+                } elseif ($ch -match '^[0-7]$') {
                     $matchedOpt = $mainOptions | Where-Object { $_.Key -eq $ch.ToString() }
                     if ($matchedOpt) {
                         $chosenKey = $matchedOpt.Key
@@ -333,16 +334,17 @@ while ($true) {
         "4" {
             # CPU & Memory Hub (Option inside an option)
             $subOpts = @(
-                [PSCustomObject]@{ Key = "1"; Title = "All-in-One CPU & RAM Status";    Desc = "Overall load %, clocks, cores and memory volume" }
+                [PSCustomObject]@{ Key = "1"; Title = "All-in-One CPU & RAM Status";    Desc = "Overall load %, clocks, cores, DDR5 speed & modules" }
                 [PSCustomObject]@{ Key = "2"; Title = "Measure Instantaneous CPU Spikes";Desc = "Detect per-process CPU spikes in real-time" }
                 [PSCustomObject]@{ Key = "3"; Title = "Cap CPU Boost Frequency (99%)";  Desc = "Disable thermal throttling spikes safely" }
+                [PSCustomObject]@{ Key = "4"; Title = "Launch HWiNFO64 Fan Sensors";    Desc = "Start HWiNFO sensor engine for fan RPMs & VRM" }
                 [PSCustomObject]@{ Key = "0"; Title = "Return to Main Menu";             Desc = "Back to subsystem launcher" }
             )
             $subPick = Show-SubMenu -HubTitle "CPU & MEMORY HUB" -Options $subOpts
             Clear-Host
             switch ($subPick) {
                 "1" {
-                    & "$ScriptDir\core\HardwareProfile.ps1"
+                    & "$ScriptDir\core\HardwareProfile.ps1" -ShowUi
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }
@@ -353,6 +355,11 @@ while ($true) {
                 }
                 "3" {
                     & "$ScriptDir\optimizer\PowerOptimizer.ps1"
+                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                    [Console]::ReadKey($true) | Out-Null
+                }
+                "4" {
+                    & "$ScriptDir\Launch-HWiNFO.bat"
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }
@@ -397,6 +404,45 @@ while ($true) {
                     if (-not (Test-Path $logsPath)) { New-Item -ItemType Directory -Path $logsPath -Force | Out-Null }
                     Start-Process explorer.exe -ArgumentList $logsPath
                     Write-Host "Opened logs folder in File Explorer." -ForegroundColor Green
+                    Start-Sleep -Seconds 1
+                }
+            }
+        }
+
+        "7" {
+            # HWiNFO64 Sensor Hub (Option inside an option)
+            $subOpts = @(
+                [PSCustomObject]@{ Key = "1"; Title = "Launch HWiNFO64 Sensor Engine";  Desc = "Start HWiNFO64 in background sensors-only mode" }
+                [PSCustomObject]@{ Key = "2"; Title = "Stream Shared Memory Telemetry"; Desc = "Read CPU/GPU Fan RPM, VRM & GPU Hotspot in terminal" }
+                [PSCustomObject]@{ Key = "3"; Title = "Open HWiNFO Directory";          Desc = "Open C:\Users\SREEHARAN\wallpaper\hwi_852 in Explorer" }
+                [PSCustomObject]@{ Key = "0"; Title = "Return to Main Menu";             Desc = "Back to subsystem launcher" }
+            )
+            $subPick = Show-SubMenu -HubTitle "HWINFO64 SENSOR & TELEMETRY HUB" -Options $subOpts
+            Clear-Host
+            switch ($subPick) {
+                "1" {
+                    & "$ScriptDir\Launch-HWiNFO.bat"
+                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                    [Console]::ReadKey($true) | Out-Null
+                }
+                "2" {
+                    $pyBridge = Join-Path $ScriptDir "tui\hwinfo_bridge.py"
+                    if (Get-Command python -ErrorAction SilentlyContinue) {
+                        python $pyBridge
+                    } else {
+                        Write-Host "[ERROR] Python is required to query shared memory." -ForegroundColor Red
+                    }
+                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                    [Console]::ReadKey($true) | Out-Null
+                }
+                "3" {
+                    $hwiDir = "C:\Users\SREEHARAN\wallpaper\hwi_852"
+                    if (Test-Path $hwiDir) {
+                        Start-Process explorer.exe -ArgumentList $hwiDir
+                        Write-Host "Opened HWiNFO directory in File Explorer." -ForegroundColor Green
+                    } else {
+                        Write-Host "[ERROR] Directory not found: $hwiDir" -ForegroundColor Red
+                    }
                     Start-Sleep -Seconds 1
                 }
             }

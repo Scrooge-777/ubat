@@ -27,12 +27,20 @@ from rich.live import Live
 from rich.align import Align
 from rich import box
 
+try:
+    from hwinfo_bridge import query_hwinfo_sensors
+except ImportError:
+    try:
+        from tui.hwinfo_bridge import query_hwinfo_sensors
+    except ImportError:
+        query_hwinfo_sensors = None
+
 # Console initialization
 console = Console()
 
 # Global State
 RUNNING = True
-CURRENT_VIEW = "all"  # 'all', 'battery', 'cpu', 'ram', 'storage', 'processes', 'logs'
+CURRENT_VIEW = "all"  # 'all', 'battery', 'cpu', 'ram', 'storage', 'processes', 'logs', 'hwinfo'
 REFRESH_RATES = [0.25, 0.5, 1.0, 2.0]
 REFRESH_INDEX = 1     # Default 0.5s
 REFRESH_RATE = REFRESH_RATES[REFRESH_INDEX]
@@ -55,6 +63,8 @@ HARDWARE_INFO = {
     "cpu_cores_logical": psutil.cpu_count(logical=True) or 16,
     "cpu_cores_physical": psutil.cpu_count(logical=False) or 8,
     "total_ram_gb": round(psutil.virtual_memory().total / (1024**3), 1),
+    "ram_speed_mts": 5600,
+    "ram_modules": [],
 }
 
 # Real-time Telemetry Cache
@@ -79,6 +89,13 @@ TELEMETRY = {
     "gpu_util": 0,
     "gpu_temp": 43,
     "gpu_power": 18.2,
+    "gpu_pcie_link": "Gen5 x8",
+    "hwinfo_active": False,
+    "cpu_fan_rpm": 0,
+    "gpu_fan_rpm": 0,
+    "gpu_hotspot_c": 0,
+    "vrm_temp_c": 0,
+    "package_power_w": 0.0,
     "ssd_model": "Samsung NVMe SSD",
     "ssd_health": "Healthy (OK)",
     "ssd_wear_pct": 0,
@@ -114,6 +131,32 @@ def detect_system_hardware():
         out = subprocess.check_output(cmd, shell=True, text=True, timeout=2).strip()
         if out:
             HARDWARE_INFO["cpu_name"] = out.strip()
+    except Exception:
+        pass
+
+    try:
+        cmd = 'powershell.exe -NoProfile -Command "Get-CimInstance Win32_PhysicalMemory | Select-Object BankLabel, Manufacturer, PartNumber, ConfiguredClockSpeed, Capacity | ConvertTo-Json -Compress"'
+        out = subprocess.check_output(cmd, shell=True, text=True, timeout=2.5).strip()
+        if out:
+            data = json.loads(out)
+            if isinstance(data, dict):
+                data = [data]
+            mods = []
+            max_spd = 0
+            for item in data:
+                spd = item.get("ConfiguredClockSpeed", 0) or 0
+                if spd > max_spd:
+                    max_spd = spd
+                mods.append({
+                    "bank": item.get("BankLabel", "BANK 0"),
+                    "mfg": (item.get("Manufacturer") or "Generic").strip(),
+                    "part": (item.get("PartNumber") or "").strip(),
+                    "speed": spd,
+                    "gb": round((item.get("Capacity", 0) or 0) / (1024**3), 1)
+                })
+            HARDWARE_INFO["ram_modules"] = mods
+            if max_spd > 0:
+                HARDWARE_INFO["ram_speed_mts"] = max_spd
     except Exception:
         pass
 
@@ -180,7 +223,7 @@ def update_gpu_nvidia():
     global TELEMETRY
     try:
         out = subprocess.check_output(
-            ["nvidia-smi", "--query-gpu=name,utilization.gpu,temperature.gpu,power.draw", "--format=csv,noheader,nounits"],
+            ["nvidia-smi", "--query-gpu=name,utilization.gpu,temperature.gpu,power.draw,pcie.link.gen.current,pcie.link.width.current", "--format=csv,noheader,nounits"],
             text=True, timeout=1.5
         ).strip()
         parts = [p.strip() for p in out.split(",")]
@@ -189,15 +232,51 @@ def update_gpu_nvidia():
             TELEMETRY["gpu_util"] = int(parts[1])
             TELEMETRY["gpu_temp"] = int(parts[2])
             TELEMETRY["gpu_power"] = float(parts[3])
+        if len(parts) >= 6:
+            TELEMETRY["gpu_pcie_link"] = f"Gen{parts[4]} x{parts[5]}"
     except Exception:
         TELEMETRY["gpu_name"] = "NVIDIA dGPU (Dynamic Sleep)"
         TELEMETRY["gpu_util"] = 0
         TELEMETRY["gpu_temp"] = 0
         TELEMETRY["gpu_power"] = 0.0
+        TELEMETRY["gpu_pcie_link"] = "N/A"
+
+
+def update_hwinfo():
+    """Queries HWiNFO shared memory bridge for fan RPMs, VRM, and hotspot thermals."""
+    global TELEMETRY
+    if query_hwinfo_sensors:
+        try:
+            hw = query_hwinfo_sensors()
+            TELEMETRY["hwinfo_active"] = hw.get("active", False)
+            if hw.get("active", False):
+                TELEMETRY["cpu_fan_rpm"] = hw.get("cpu_fan_rpm", 0)
+                TELEMETRY["gpu_fan_rpm"] = hw.get("gpu_fan_rpm", 0)
+                TELEMETRY["gpu_hotspot_c"] = hw.get("gpu_hotspot_c", 0)
+                TELEMETRY["vrm_temp_c"] = hw.get("vrm_temp_c", 0)
+                if hw.get("package_power_w", 0.0) > 0:
+                    TELEMETRY["package_power_w"] = hw.get("package_power_w", 0.0)
+        except Exception:
+            pass
+
+
+def launch_hwinfo_sensors():
+    """Launches HWiNFO64 Sensors mode non-blocking in background."""
+    global STATUS_MESSAGE, STATUS_TIME
+    bat_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Launch-HWiNFO.bat")
+    try:
+        flags = 0
+        if os.name == "nt":
+            flags = subprocess.CREATE_NO_WINDOW
+        subprocess.Popen(["cmd.exe", "/c", bat_path], creationflags=flags)
+        STATUS_MESSAGE = "Launched HWiNFO64 sensor engine in background."
+    except Exception as e:
+        STATUS_MESSAGE = f"Failed to launch HWiNFO64: {e}"
+    STATUS_TIME = time.time()
 
 
 def telemetry_background_worker():
-    """Background worker thread for periodic heavy telemetry (GPU, ACPI, SSD)."""
+    """Background worker thread for periodic heavy telemetry (GPU, ACPI, SSD, HWiNFO)."""
     global RUNNING
     counter = 0
     while RUNNING:
@@ -207,6 +286,7 @@ def telemetry_background_worker():
                 update_ssd_cim()
             if counter % 2 == 0:
                 update_gpu_nvidia()
+            update_hwinfo()
         except Exception:
             pass
         counter += 1
@@ -390,6 +470,14 @@ def build_header_panel():
     title_text.append(f"{mfg} {model}", style="bold yellow")
     title_text.append("  |  CPU: ", style="bold cyan")
     title_text.append(f"{cpu}", style="bold green")
+
+    if TELEMETRY.get("hwinfo_active", False):
+        title_text.append("  |  HWiNFO: ", style="bold cyan")
+        title_text.append("[ONLINE]", style="bold green")
+    else:
+        title_text.append("  |  HWiNFO: ", style="bold cyan")
+        title_text.append("[STANDBY]", style="dim yellow")
+
     title_text.append("  |  VIEW: ", style="bold cyan")
     title_text.append(f"[{CURRENT_VIEW.upper()}]", style="bold magenta")
 
@@ -441,6 +529,7 @@ def build_cpu_ram_panel():
     ram_used = TELEMETRY["ram_used_gb"]
     ram_avail = TELEMETRY["ram_avail_gb"]
     ram_total = HARDWARE_INFO["total_ram_gb"]
+    ram_speed = HARDWARE_INFO.get("ram_speed_mts", 0)
 
     cpu_color = "green" if cpu_pct < 50 else "yellow" if cpu_pct < 80 else "red"
     ram_color = "green" if ram_pct < 65 else "yellow" if ram_pct < 85 else "red"
@@ -451,8 +540,17 @@ def build_cpu_ram_panel():
 
     table.add_row("CPU Load", make_progress_bar(cpu_pct, width=14, color=cpu_color))
     table.add_row("RAM Usage", make_progress_bar(ram_pct, width=14, color=ram_color))
-    table.add_row("Memory Vol", f"[bold white]{ram_used:.1f} GB[/bold white] / [dim]{ram_total:.1f} GB[/dim]")
-    table.add_row("Free Memory", f"[bold green]{ram_avail:.1f} GB[/bold green] [dim]available[/dim]")
+    
+    speed_tag = f" [dim](DDR5-{ram_speed} MT/s)[/dim]" if ram_speed > 0 else ""
+    table.add_row("Memory Vol", f"[bold white]{ram_used:.1f} GB[/bold white] / [dim]{ram_total:.1f} GB[/dim]{speed_tag}")
+
+    if TELEMETRY.get("hwinfo_active", False):
+        cpu_rpm = TELEMETRY.get("cpu_fan_rpm", 0)
+        gpu_rpm = TELEMETRY.get("gpu_fan_rpm", 0)
+        fan_str = f"CPU: {cpu_rpm} | GPU: {gpu_rpm} RPM" if (cpu_rpm > 0 or gpu_rpm > 0) else "Active"
+        table.add_row("Fan Speeds", f"[bold green]{fan_str}[/bold green]")
+    else:
+        table.add_row("Free Memory", f"[bold green]{ram_avail:.1f} GB[/bold green] [dim]available[/dim]")
     
     # Core sparks
     cores = TELEMETRY["cpu_per_core"]
@@ -476,6 +574,8 @@ def build_storage_panel():
     ssd_wear = TELEMETRY.get("ssd_wear_pct", 0)
     ssd_temp = TELEMETRY.get("ssd_temp", 46)
     parts = TELEMETRY.get("partitions", [])
+    gpu_pcie = TELEMETRY.get("gpu_pcie_link", "Gen5 x8")
+    gpu_hotspot = TELEMETRY.get("gpu_hotspot_c", 0)
 
     table = Table(box=None, expand=True, show_header=False, padding=(0, 1))
     table.add_column("Device", style="bold cyan", width=14)
@@ -484,9 +584,15 @@ def build_storage_panel():
     table.add_row("SSD Model", f"[bold yellow]{ssd_model[:22]}[/bold yellow]")
     health_str = f"[bold green]{ssd_health}[/bold green] (Wear: [bold yellow]{ssd_wear}%[/bold yellow] | [yellow]{ssd_temp} C[/yellow])"
     table.add_row("Drive Health", health_str)
+
+    if gpu_hotspot > 0:
+        table.add_row("GPU Thermals", f"[yellow]{TELEMETRY.get('gpu_temp', 0)} C[/yellow] (Hotspot: [bold red]{gpu_hotspot} C[/bold red])")
+    elif gpu_pcie and gpu_pcie != "N/A":
+        table.add_row("PCIe Link", f"[bold cyan]{gpu_pcie}[/bold cyan] [dim](dGPU Link)[/dim]")
+
     table.add_row("Throughput", f"R: [bold green]{read_mb:.1f} MB/s[/bold green] | W: [bold cyan]{write_mb:.1f} MB/s[/bold cyan]")
 
-    for p in parts[:3]:
+    for p in parts[:2]:
         pct = p["pct"]
         bar = make_progress_bar(pct, width=10, color="green" if pct < 75 else "yellow" if pct < 90 else "red")
         table.add_row(f"{p['device']} ({p['fstype']})", f"{bar} [dim]({p['free_gb']}GB free)[/dim]")
@@ -774,14 +880,102 @@ def build_logs_view():
     return layout
 
 
+def build_hwinfo_view():
+    """Deep HWiNFO Sensor & Shared Memory Bridge Dashboard."""
+    hw_active = TELEMETRY.get("hwinfo_active", False)
+    cpu_rpm = TELEMETRY.get("cpu_fan_rpm", 0)
+    gpu_rpm = TELEMETRY.get("gpu_fan_rpm", 0)
+    vrm_c = TELEMETRY.get("vrm_temp_c", 0)
+    gpu_hotspot = TELEMETRY.get("gpu_hotspot_c", 0)
+    pkg_w = TELEMETRY.get("package_power_w", 0.0)
+    gpu_w = TELEMETRY.get("gpu_power", 0.0)
+    gpu_temp = TELEMETRY.get("gpu_temp", 0)
+    gpu_pcie = TELEMETRY.get("gpu_pcie_link", "N/A")
+    gpu_name = TELEMETRY.get("gpu_name", "NVIDIA GeForce RTX 5050 Laptop GPU")
+    ssd_temp = TELEMETRY.get("ssd_temp", 46)
+    ssd_model = TELEMETRY.get("ssd_model", "Samsung NVMe SSD")
+    ram_speed = HARDWARE_INFO.get("ram_speed_mts", 5600)
+    ram_mods = HARDWARE_INFO.get("ram_modules", [])
+
+    # Overview table
+    header_table = Table(box=box.ROUNDED, expand=True, padding=(0, 2))
+    header_table.add_column("BRIDGE SUBSYSTEM", style="bold cyan", width=26)
+    header_table.add_column("STATUS & CONNECTION DETAILS", style="bold white")
+
+    if hw_active:
+        bridge_status = "[bold green]ONLINE (Connected to Global\\HWiNFO_SENS_SM2)[/bold green]"
+    else:
+        bridge_status = "[bold yellow]STANDBY - Press [H] to Launch HWiNFO64 in Background[/bold yellow]"
+
+    header_table.add_row("HWiNFO Bridge State", bridge_status)
+    header_table.add_row("Driver Protocol", "Windows Memory-Mapped File (mmap, zero-latency <0.1ms)")
+    header_table.add_row("Launch Shortcut", "Press [bold yellow][H][/bold yellow] anytime to start/restart HWiNFO64 sensors")
+
+    # Sensor grid table
+    sensor_table = Table(box=box.ROUNDED, expand=True, padding=(0, 2))
+    sensor_table.add_column("SENSOR CATEGORY", style="bold cyan", width=20)
+    sensor_table.add_column("TELEMETRY CHANNEL", style="bold white", width=24)
+    sensor_table.add_column("CURRENT VALUE", style="bold green", width=20)
+    sensor_table.add_column("STATUS / GAUGE", justify="left")
+
+    # Fans
+    if cpu_rpm > 0:
+        cpu_gauge = make_mini_meter(cpu_rpm, max_val=5000, width=12)
+        sensor_table.add_row("Cooling Fans", "CPU Cooling Fan", f"{cpu_rpm} RPM", f"{cpu_gauge} Active")
+    else:
+        sensor_table.add_row("Cooling Fans", "CPU Cooling Fan", "-- RPM", "[dim]Standby / Zero RPM[/dim]")
+
+    if gpu_rpm > 0:
+        gpu_gauge = make_mini_meter(gpu_rpm, max_val=5000, width=12)
+        sensor_table.add_row("Cooling Fans", "GPU Cooling Fan", f"{gpu_rpm} RPM", f"{gpu_gauge} Active")
+    else:
+        sensor_table.add_row("Cooling Fans", "GPU Cooling Fan", "-- RPM", "[dim]Standby / Zero RPM[/dim]")
+
+    # Thermals
+    if vrm_c > 0:
+        vrm_col = "red" if vrm_c > 85 else "yellow" if vrm_c > 70 else "green"
+        sensor_table.add_row("Thermals", "Motherboard VRM / MOSFET", f"[{vrm_col}]{vrm_c} C[/{vrm_col}]", "[dim]HWiNFO Bridge[/dim]")
+    else:
+        sensor_table.add_row("Thermals", "Motherboard VRM / MOSFET", "-- C", "[dim]Awaiting HWiNFO[/dim]")
+
+    if gpu_hotspot > 0:
+        hs_col = "red" if gpu_hotspot > 85 else "yellow" if gpu_hotspot > 70 else "green"
+        sensor_table.add_row("Thermals", "GPU Hotspot (Max Diode)", f"[{hs_col}]{gpu_hotspot} C[/{hs_col}]", f"Core: {gpu_temp} C")
+    else:
+        sensor_table.add_row("Thermals", "GPU Core & Hotspot", f"{gpu_temp} C", "[dim]NVIDIA Driver[/dim]")
+
+    sensor_table.add_row("Thermals", "NVMe Storage Controller", f"{ssd_temp} C", f"[dim]{ssd_model[:22]}[/dim]")
+
+    # Electrical Power
+    pkg_str = f"{pkg_w:.1f} W" if pkg_w > 0 else "-- W"
+    sensor_table.add_row("Power & Load", "CPU Package Power", pkg_str, "[dim]HWiNFO SM2[/dim]")
+    sensor_table.add_row("Power & Load", "GPU Board Power Draw", f"{gpu_w:.1f} W", f"[dim]{gpu_name[:22]}[/dim]")
+    sensor_table.add_row("Power & Load", "Battery Discharge / Charge", f"{TELEMETRY['battery_wattage']:.2f} W", f"Pack: {TELEMETRY['battery_voltage_v']}V")
+
+    # High-speed physical buses
+    sensor_table.add_row("Buses & Memory", "DDR5 Memory Bus", f"{ram_speed} MT/s", f"{HARDWARE_INFO['total_ram_gb']} GB Configured")
+    if ram_mods:
+        for m in ram_mods:
+            sensor_table.add_row("Buses & Memory", f"RAM: {m['bank']}", f"{m['speed']} MT/s", f"{m['mfg']} {m['part']} ({m['gb']}GB)")
+    sensor_table.add_row("Buses & Memory", "GPU PCIe Negotiation", f"{gpu_pcie}", "Current negotiated link")
+
+    layout = Layout()
+    layout.split_column(
+        Layout(Panel(header_table, title="[bold cyan]HWINFO64 SHARED MEMORY BRIDGE CONFIGURATION[/bold cyan]", box=box.ROUNDED, border_style="cyan"), size=5),
+        Layout(Panel(sensor_table, title="[bold cyan]DEEP HARDWARE SENSORS & PHYSICAL BUS TELEMETRY[/bold cyan]", box=box.ROUNDED, border_style="cyan")),
+    )
+    return layout
+
+
 def build_footer_panel():
-    """Interactive hotkey footer bar (Cleaned of Power option)."""
+    """Interactive hotkey footer bar with HWiNFO integration."""
     global STATUS_MESSAGE, STATUS_TIME
 
     rate_str = f"{REFRESH_RATE}s"
 
     footer_text = Text()
-    footer_text.append(" [<-/-> or 1-7] Views ", style="bold white on #2563eb")
+    footer_text.append(" [<-/-> or 1-8] Views ", style="bold white on #2563eb")
+    footer_text.append(" [H] HWiNFO ", style="bold white on #0891b2")
     footer_text.append(" [T] SSD TRIM ", style="bold white on #059669")
     footer_text.append(" [O] Logs Folder ", style="bold white on #7c3aed")
     footer_text.append(f" [R] Rate: {rate_str} ", style="bold white on #0284c7")
@@ -856,6 +1050,9 @@ def render_dashboard():
     elif CURRENT_VIEW == "logs":
         layout["body"].update(build_logs_view())
 
+    elif CURRENT_VIEW == "hwinfo":
+        layout["body"].update(build_hwinfo_view())
+
     return layout
 
 
@@ -926,12 +1123,13 @@ def main():
     update_battery_cim()
     update_ssd_cim()
     update_gpu_nvidia()
+    update_hwinfo()
 
     # Background heavy thread
     worker = threading.Thread(target=telemetry_background_worker, daemon=True)
     worker.start()
 
-    views_list = ["all", "battery", "cpu", "ram", "storage", "processes", "logs"]
+    views_list = ["all", "battery", "cpu", "ram", "storage", "processes", "logs", "hwinfo"]
     last_render_time = time.time()
 
     with Live(render_dashboard(), refresh_per_second=20, screen=True, console=console) as live:
@@ -969,6 +1167,11 @@ def main():
                         CURRENT_VIEW = "processes"; view_changed = True
                     elif key in [b'7', b'l', b'L']:
                         CURRENT_VIEW = "logs"; view_changed = True
+                    elif key == b'8':
+                        CURRENT_VIEW = "hwinfo"; view_changed = True
+                    elif key in [b'h', b'H']:
+                        launch_hwinfo_sensors()
+                        CURRENT_VIEW = "hwinfo"; view_changed = True
                     elif key in [b't', b'T']:
                         run_ssd_trim_optimizer(live)
                         view_changed = True

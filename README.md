@@ -14,8 +14,9 @@ Whenever **OMNI** runs on any PC, it automatically detects the exact brand and h
 
 ### High-Performance Terminal Interface
 **OMNI** provides clean, high-performance terminal environments:
-1. **Live System Monitor (Python & Rich Engine):** Instantaneous 25ms keystroke response, btop-style dynamic micro-gauges, NVMe SSD partition meters, SMART wear degradation %, in-terminal session logs, and interactive PID killer.
+1. **Live System Monitor (Python & Rich Engine):** Instantaneous 25ms keystroke response, btop-style dynamic micro-gauges, NVMe SSD partition meters, SMART wear degradation %, DDR5 RAM speed, NVIDIA PCIe link negotiation, HWiNFO64 shared memory bridge for fan RPMs and VRM thermals, in-terminal session logs, and interactive PID killer.
 2. **Native Console Hub (PowerShell):** Zero-dependency, flicker-free in-place console monitor with nested sub-menus ("option inside an option") and comprehensive "all option in one option" views.
+3. **HWiNFO64 Integration (v8.52 Bridge):** In-memory zero-latency memory-mapped file reader (Global\HWiNFO_SENS_SM2) reading CPU/GPU Fan RPM, VRM MOSFET temperature, and GPU hotspot thermals with 1-click launcher.
 
 ---
 
@@ -23,50 +24,52 @@ Whenever **OMNI** runs on any PC, it automatically detects the exact brand and h
 
 ```text
 ubat/
-│
-├── omni.bat                      # Master Executable Launcher (Runs OMNI live terminal monitor directly)
-├── ubat.bat                      # Backward-compatible CLI Launcher
-├── Run-TUI.bat                   # 1-Click Launch: Python Live System Monitor
-├── Run-Live-Monitor.bat          # 1-Click Launch: Native PowerShell Console Monitor
-├── Optimize-Laptop.bat           # 1-Click Launch: Auto-profile hardware & optimize power settings
-├── Start-Test-Logger.bat         # 1-Click Launch: Start background drain test recorder
-├── Stop-Test-Logger.bat          # 1-Click Launch: Stop background drain test recorder
-├── Generate-Report.bat           # 1-Click Launch: Instant statistical analysis & summary
-├── Sync-Git.bat                  # 1-Click Git Synchronizer: Keeps local and GitHub in sync
-│
-├── tui/                          # Flagship Terminal Interface (Python)
-│   └── ubat_tui.py               # Live monitor with btop gauges, partition meters & instant controls
-│
-├── core/                         # Core Hardware Profiling Engine
-│   ├── HardwareProfile.ps1       # Auto-detects OEM, CPU, GPUs, Battery Design & Live Metrics
-│   └── BatteryHealthModel.ps1    # Algorithmic health grade, calibrated charge %, & cycle life
-│
-├── monitor/                      # Live Visualization Module
-│   └── LiveMonitor.ps1           # Dynamic branded UI with partitioned views
-│
-├── optimizer/                    # Hardware Optimization Engine
-│   ├── SsdOptimizer.ps1          # Volume ReTrim, Windows TRIM subsystem & cache wear reduction
-│   └── PowerOptimizer.ps1        # Safe CPU boost capping (99%), PCIe ASPM & thermal tuning
-│
-├── logger/                       # Background Crash-Proof Recording Daemon
-│   ├── BackgroundLogger.ps1      # 30-second silent fail-safe logger (saves into logs/)
-│   └── StopLogger.ps1            # PID-based background daemon terminator
-│
-├── analyzer/                     # Statistical Analytics & Reporting Engine
-│   ├── LogAnalyzer.ps1           # Calculates average watts, drop %, runtime, and exports Markdown
-│   └── ViewLogs.ps1              # In-terminal session log viewer with File Explorer shortcut
-│
-├── diagnostics/                  # Hardware Diagnostic Utilities
-│   ├── ProcessManager.ps1        # High-speed process table & interactive PID killer (<20ms)
-│   ├── SsdDiagnostics.ps1        # Partition tables, file systems, SMART wear % & throughput
-│   └── MeasureCpuDelta.ps1       # Process-level instantaneous CPU spike detector
-│
-├── logs/                         # Dedicated Logs Directory (All data saved here)
-│   ├── current-session.csv       # Active test session log
-│   ├── last-report.md            # Most recently generated statistical Markdown report
-│   └── archive/                  # Historical test sessions saved by timestamp
-│
-└── README.md                     # Documentation & project structure
+|
++-- omni.bat                      # Master Executable Launcher (Runs OMNI live terminal monitor directly)
++-- ubat.bat                      # Backward-compatible CLI Launcher
++-- Launch-HWiNFO.bat             # 1-Click Launch: Background HWiNFO64 sensors mode
++-- Run-TUI.bat                   # 1-Click Launch: Python Live System Monitor
++-- Run-Live-Monitor.bat          # 1-Click Launch: Native PowerShell Console Monitor
++-- Optimize-Laptop.bat           # 1-Click Launch: Auto-profile hardware & optimize power settings
++-- Start-Test-Logger.bat         # 1-Click Launch: Start background drain test recorder
++-- Stop-Test-Logger.bat          # 1-Click Launch: Stop background drain test recorder
++-- Generate-Report.bat           # 1-Click Launch: Instant statistical analysis & summary
++-- Sync-Git.bat                  # 1-Click Git Synchronizer: Keeps local and GitHub in sync
+|
++-- tui/                          # Flagship Terminal Interface (Python)
+|   +-- ubat_tui.py               # Live monitor with btop gauges, partition meters & instant controls
+|   \-- hwinfo_bridge.py          # Zero-latency mmap bridge for HWiNFO_SENS_SM2 shared memory
+|
++-- core/                         # Core Hardware Profiling Engine
+|   +-- HardwareProfile.ps1       # Auto-detects OEM, CPU, GPUs, DDR5 MT/s, PCIe link, RAM modules
+|   \-- BatteryHealthModel.ps1    # Algorithmic health grade, calibrated charge %, & cycle life
+|
++-- monitor/                      # Live Visualization Module
+|   \-- LiveMonitor.ps1           # Dynamic branded UI with partitioned views
+|
++-- optimizer/                    # Hardware Optimization Engine
+|   +-- SsdOptimizer.ps1          # Volume ReTrim, Windows TRIM subsystem & cache wear reduction
+|   \-- PowerOptimizer.ps1        # Safe CPU boost capping (99%), PCIe ASPM & thermal tuning
+|
++-- logger/                       # Background Crash-Proof Recording Daemon
+|   +-- BackgroundLogger.ps1      # 30-second silent fail-safe logger (saves into logs/)
+|   \-- StopLogger.ps1            # PID-based background daemon terminator
+|
++-- analyzer/                     # Statistical Analytics & Reporting Engine
+|   +-- LogAnalyzer.ps1           # Calculates average watts, drop %, runtime, and exports Markdown
+|   \-- ViewLogs.ps1              # In-terminal session log viewer with File Explorer shortcut
+|
++-- diagnostics/                  # Hardware Diagnostic Utilities
+|   +-- ProcessManager.ps1        # High-speed process table & interactive PID killer (<20ms)
+|   +-- SsdDiagnostics.ps1        # Partition tables, file systems, SMART wear % & throughput
+|   \-- MeasureCpuDelta.ps1       # Process-level instantaneous CPU spike detector
+|
++-- logs/                         # Dedicated Logs Directory (All data saved here)
+|   +-- current-session.csv       # Active test session log
+|   +-- last-report.md            # Most recently generated statistical Markdown report
+|   \-- archive/                  # Historical test sessions saved by timestamp
+|
+\-- README.md                     # Documentation & project structure
 ```
 
 ---
@@ -82,7 +85,7 @@ Run **`omni --menu`** or **`ubat --menu`**:
  Hardware: HP OMEN Gaming Laptop 16-am0xxx  |  CPU: Intel(R) Core(TM) i7-14650HX
 
  Choose a hardware subsystem to inspect:
- (Use [Up / Down] Arrow Keys to navigate, [Enter] to select, or tap [0-6])
+ (Use [Up / Down] Arrow Keys to navigate, [Enter] to select, or tap [0-7])
 
   > [1] Live System Monitor      - All-in-One real-time terminal telemetry engine
     [2] Storage & SSD Hub        - Partitions, file systems, SMART wear & SSD TRIM optimizer
@@ -90,15 +93,17 @@ Run **`omni --menu`** or **`ubat --menu`**:
     [4] CPU & Memory Hub         - Multi-thread core loads, RAM volume & frequency limits
     [5] Process Manager Hub      - Fast resource monitor & interactive PID killer
     [6] Session Logs & Reports   - In-terminal session logs, analysis reports & folder access
+    [7] HWiNFO64 Sensor Hub      - Launch HWiNFO64 v8.52 sensors & stream memory-mapped telemetry
     [0] Exit                     - Exit OMNI toolkit
 
 ------------------------------------------------------------------------------------------
- Controls: [Up / Down] Move Selection  |  [Enter / Space] Select  |  [0-6] Quick Jump  |  [Q] Exit
+ Controls: [Up / Down] Move Selection  |  [Enter / Space] Select  |  [0-7] Quick Jump  |  [Q] Exit
 ```
 
 ### Option B: Direct Terminal Launch
 Typing **`omni`** or **`ubat`** from any terminal opens the live monitor directly:
-- Arrow keys `[<- / ->]` or `[1-7]` cycle between All, Battery, CPU, RAM, Storage, Processes, and Logs views.
-- `[T]` triggers real-time volume TRIM & SSD optimization on all mounted partitions.
-- `[O]` opens the `logs` folder in Windows File Explorer.
-- `[K]` prompts for PID termination directly inside the terminal.
+* Arrow keys `[<- / ->]` or `[1-8]` cycle between All, Battery, CPU, RAM, Storage, Processes, Logs, and HWiNFO views.
+* `[H]` launches the HWiNFO64 background sensor engine and activates real-time fan RPM and thermal streaming.
+* `[T]` triggers real-time volume TRIM & SSD optimization on all mounted partitions.
+* `[O]` opens the `logs` folder in Windows File Explorer.
+* `[K]` prompts for PID termination directly inside the terminal.
