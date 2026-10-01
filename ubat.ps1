@@ -2,7 +2,7 @@
 .SYNOPSIS
     ubat Master Interactive Interactive Menu (Arrow-Key & Motionless Edition)
 .DESCRIPTION
-    Master TUI launcher for the entire ubat toolkit. Supports seamless arrow-key navigation (↑/↓),
+    Master TUI launcher for the entire ubat toolkit. Supports seamless arrow-key navigation (Up/Down),
     Enter/Space confirmation, direct number shortcuts, and zero-flicker rendering.
 #>
 
@@ -65,17 +65,16 @@ function Write-LineClean {
 }
 
 $mainOptions = @(
-    [PSCustomObject]@{ Key = "1"; Title = "Animated Terminal Dashboard"; Desc = "Flagship Python & Rich engine with live heatmaps & process killer" }
-    [PSCustomObject]@{ Key = "2"; Title = "Native Motionless Monitor";    Desc = "PowerShell 6-partition zero-flicker live console monitor" }
-    [PSCustomObject]@{ Key = "3"; Title = "Battery Health Model";        Desc = "Calibrated health %, cycle life, degradation grade & pack balance" }
-    [PSCustomObject]@{ Key = "4"; Title = "Optimize Laptop Battery";     Desc = "Safe CPU boost capping (99%), PCIe ASPM & OEM guidance" }
-    [PSCustomObject]@{ Key = "5"; Title = "Process Manager & Killer";    Desc = "Task Manager parallel table & interactive PID killer" }
-    [PSCustomObject]@{ Key = "6"; Title = "NVMe SSD Health & Speed";    Desc = "Storage throughput (MB/s), active disk %, drive health & APST draw" }
-    [PSCustomObject]@{ Key = "7"; Title = "Start Background Logger";     Desc = "30s silent crash-proof session recording into logs/" }
-    [PSCustomObject]@{ Key = "8"; Title = "Stop Background Logger";      Desc = "Terminate active background recording daemon" }
-    [PSCustomObject]@{ Key = "9"; Title = "Generate Test Report";        Desc = "Statistical analysis, average Watts, battery drop & Markdown export" }
-    [PSCustomObject]@{ Key = "L"; Title = "Open Logs Folder";            Desc = "Open ubat/logs/ folder in Windows File Explorer" }
-    [PSCustomObject]@{ Key = "0"; Title = "Exit";                        Desc = "Exit ubat toolkit" }
+    [PSCustomObject]@{ Key = "1"; Title = "Live Monitor";           Desc = "Real-time battery, CPU, GPU & Task Manager heatmaps" }
+    [PSCustomObject]@{ Key = "2"; Title = "Battery Health";         Desc = "Calibrated health %, wear level, cycle count & pack grade" }
+    [PSCustomObject]@{ Key = "3"; Title = "Battery Optimizer";      Desc = "Tune power schemes, PCIe ASPM & safe CPU boost limits" }
+    [PSCustomObject]@{ Key = "4"; Title = "Process Manager";        Desc = "Task Manager process table & interactive PID killer" }
+    [PSCustomObject]@{ Key = "5"; Title = "Storage Diagnostics";    Desc = "NVMe SSD read/write speeds, drive health & APST draw" }
+    [PSCustomObject]@{ Key = "6"; Title = "Start Session Logger";   Desc = "Record battery and power usage every 30s in background" }
+    [PSCustomObject]@{ Key = "7"; Title = "Stop Session Logger";    Desc = "Terminate active background battery recording daemon" }
+    [PSCustomObject]@{ Key = "8"; Title = "Generate Test Report";   Desc = "Statistical analysis, average drain Watts & runtime" }
+    [PSCustomObject]@{ Key = "9"; Title = "View Session Logs";      Desc = "Show logs in terminal (with option to open folder)" }
+    [PSCustomObject]@{ Key = "0"; Title = "Exit";                   Desc = "Exit ubat toolkit" }
 )
 
 $selectedIndex = 0
@@ -98,14 +97,14 @@ while ($true) {
         Write-LineClean " Hardware: $($hw.Manufacturer) $($hw.Model)  |  CPU: $($hw.CpuName)" Gray
         Write-LineClean "" White
         Write-LineClean " Choose a toolkit module to execute:" White
-        Write-LineClean " (Use [↑ / ↓] Arrow Keys to navigate, [Enter] to select, or tap [0-9])" DarkGray
+        Write-LineClean " (Use [Up / Down] Arrow Keys to navigate, [Enter] to select, or tap [0-9])" DarkGray
         Write-LineClean "" White
 
         for ($i = 0; $i -lt $mainOptions.Count; $i++) {
             $opt = $mainOptions[$i]
             if ($i -eq $selectedIndex) {
                 # Highlight active selection
-                $line = "  ► [$($opt.Key)] $($opt.Title.PadRight(28)) - $($opt.Desc)"
+                $line = "  > [$($opt.Key)] $($opt.Title.PadRight(28)) - $($opt.Desc)"
                 Write-LineClean $line Green
             } else {
                 $line = "    [$($opt.Key)] $($opt.Title.PadRight(28)) - $($opt.Desc)"
@@ -115,7 +114,7 @@ while ($true) {
 
         Write-LineClean "" White
         Write-LineClean ("-" * $termWidth) Cyan
-        Write-LineClean " Controls: [↑ / ↓] Move Selection  |  [Enter / Space] Select  |  [0-9] Quick Jump  |  [Q] Exit" DarkGray
+        Write-LineClean " Controls: [Up / Down] Move Selection  |  [Enter / Space] Select  |  [0-9] Quick Jump  |  [Q] Exit" DarkGray
         try { [Console]::Write("`e[J") } catch {}
 
         # Non-interactive check
@@ -170,56 +169,55 @@ while ($true) {
 
     switch ($chosenKey) {
         "1" {
-            # Flagship Python Rich Animated TUI
+            # Live Monitor (Python Rich engine with auto-fallback)
             $tuiPath = Join-Path $ScriptDir "tui\ubat_tui.py"
-            python $tuiPath
+            if (Get-Command python -ErrorAction SilentlyContinue) {
+                python $tuiPath
+            } else {
+                & "$ScriptDir\monitor\LiveMonitor.ps1" -InitialView "menu"
+            }
         }
         "2" {
-            # Native PowerShell Live Monitor with arrow-key partition menu
-            & "$ScriptDir\monitor\LiveMonitor.ps1" -InitialView "menu"
-        }
-        "3" {
             & "$ScriptDir\core\BatteryHealthModel.ps1"
             Write-Host "`nPress any key to return to menu..." -ForegroundColor DarkGray
             [Console]::ReadKey($true) | Out-Null
         }
-        "4" {
+        "3" {
             & "$ScriptDir\optimizer\PowerOptimizer.ps1"
             Write-Host "`nPress any key to return to menu..." -ForegroundColor DarkGray
             [Console]::ReadKey($true) | Out-Null
         }
-        "5" {
+        "4" {
             & "$ScriptDir\diagnostics\ProcessManager.ps1"
         }
-        "6" {
+        "5" {
             & "$ScriptDir\diagnostics\SsdDiagnostics.ps1"
             Write-Host "`nPress any key to return to menu..." -ForegroundColor DarkGray
             [Console]::ReadKey($true) | Out-Null
         }
-        "7" {
+        "6" {
             Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$ScriptDir\logger\BackgroundLogger.ps1`""
             Write-Host "================================================================================" -ForegroundColor Cyan
-            Write-Host " [OK] Background Logger started silently in background." -ForegroundColor Green
-            Write-Host " Logs are continuously appending to: logs/current-session.csv" -ForegroundColor White
+            Write-Host " [OK] Background Logger started in background." -ForegroundColor Green
+            Write-Host " Telemetry is continuously recording to: logs/current-session.csv" -ForegroundColor White
             Write-Host "================================================================================" -ForegroundColor Cyan
             Start-Sleep -Seconds 2
         }
-        "8" {
+        "7" {
             & "$ScriptDir\logger\StopLogger.ps1"
             Write-Host "`nPress any key to return to menu..." -ForegroundColor DarkGray
             [Console]::ReadKey($true) | Out-Null
         }
-        "9" {
+        "8" {
             & "$ScriptDir\analyzer\LogAnalyzer.ps1"
             Write-Host "`nPress any key to return to menu..." -ForegroundColor DarkGray
             [Console]::ReadKey($true) | Out-Null
         }
+        "9" {
+            & "$ScriptDir\analyzer\ViewLogs.ps1"
+        }
         "L" {
-            $logsPath = Join-Path $ScriptDir "logs"
-            if (-not (Test-Path $logsPath)) { New-Item -ItemType Directory -Path $logsPath -Force | Out-Null }
-            Start-Process explorer.exe -ArgumentList $logsPath
-            Write-Host "Opened logs folder in File Explorer." -ForegroundColor Green
-            Start-Sleep -Seconds 1
+            & "$ScriptDir\analyzer\ViewLogs.ps1"
         }
         "0" {
             Write-Host "Exiting ubat. Goodbye!" -ForegroundColor Cyan

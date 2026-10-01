@@ -1,5 +1,5 @@
 @echo off
-title UBAT - Rich Animated Terminal Dashboard
+title UBAT - Live Hardware & Battery Monitor
 cls
 python "%~dp0tui\ubat_tui.py"
 if %ERRORLEVEL% NEQ 0 (

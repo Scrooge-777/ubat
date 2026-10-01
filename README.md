@@ -1,10 +1,10 @@
-# ⚡ ubat - Universal Battery & Hardware Telemetry Tool
+# ubat - Universal Battery & Hardware Telemetry Tool
 
 **ubat** is a modular, hardware-adaptive power diagnostic and optimization toolkit designed for **ANY Windows laptop** (HP OMEN, Lenovo Legion, ASUS ROG, Dell XPS, Acer Nitro, MSI, Surface, etc.).
 
 ---
 
-## 🌟 Dynamic Laptop Branding & Partitioned Views
+## Dynamic Laptop Branding & Partitioned Views
 
 Whenever **ubat** runs on any PC, it automatically detects the exact brand and hardware, branding the monitor directly:
 * On HP OMEN: `HP OMEN GAMING LAPTOP 16 - BATTERY, CPU, RAM & POWER MONITOR`
@@ -12,10 +12,10 @@ Whenever **ubat** runs on any PC, it automatically detects the exact brand and h
 * On ASUS: `ASUS ROG ZEPHYRUS - BATTERY, CPU, RAM & POWER MONITOR`
 * On Dell: `DELL XPS 15 - BATTERY, CPU, RAM & POWER MONITOR`
 
-### High-Performance Terminal Interfaces
-**ubat** provides two high-performance terminal environments:
-1. **Flagship Animated Terminal Dashboard (Python & Rich Engine):** Instantaneous keystroke response, Task Manager-style color heatmap shading, multi-core visualizers, live GPU wattage & interactive PID killer.
-2. **Native Motionless Console Monitor (PowerShell):** Zero-dependency, flicker-free in-place console monitor with 6 partition views.
+### High-Performance Terminal Interface
+**ubat** provides clean, high-performance terminal environments:
+1. **Live Terminal Monitor (Python & Rich Engine):** Instantaneous 25ms keystroke response, Task Manager-style color heatmap shading, multi-core visualizers, live GPU wattage, in-terminal session log viewer, and interactive PID killer.
+2. **Native Console Monitor (PowerShell):** Zero-dependency, flicker-free in-place console monitor with partitioned views.
 
 ---
 
@@ -24,23 +24,23 @@ Whenever **ubat** runs on any PC, it automatically detects the exact brand and h
 ```text
 ubat/
 │
-├── ubat.bat                      # Master Executable Launcher (Runs flagship terminal UI directly)
-├── Run-TUI.bat                   # 1-Click Launch: Flagship Animated Python Terminal
-├── Run-Live-Monitor.bat          # 1-Click Launch: Native PowerShell Motionless Monitor
+├── ubat.bat                      # Master Executable Launcher (Runs live terminal monitor directly)
+├── Run-TUI.bat                   # 1-Click Launch: Python Live Terminal Monitor
+├── Run-Live-Monitor.bat          # 1-Click Launch: Native PowerShell Console Monitor
 ├── Optimize-Laptop.bat           # 1-Click Launch: Auto-profile hardware & optimize power plan
 ├── Start-Test-Logger.bat         # 1-Click Launch: Start background drain test recorder
 ├── Stop-Test-Logger.bat          # 1-Click Launch: Stop background drain test recorder
 ├── Generate-Report.bat           # 1-Click Launch: Instant statistical analysis & summary
 │
 ├── tui/                          # Flagship Terminal Interface (Python)
-│   └── ubat_tui.py               # Live dashboard with Task Manager heatmaps & instant controls
+│   └── ubat_tui.py               # Live monitor with Task Manager heatmaps, logs view & instant controls
 │
 ├── core/                         # Core Hardware Profiling Engine
 │   ├── HardwareProfile.ps1       # Auto-detects OEM, CPU, GPUs, Battery Design & Live Metrics
 │   └── BatteryHealthModel.ps1    # Algorithmic health grade, calibrated charge %, & cycle life
 │
 ├── monitor/                      # Live Visualization Module
-│   └── LiveMonitor.ps1           # Dynamic branded UI with partitioned views (1-6)
+│   └── LiveMonitor.ps1           # Dynamic branded UI with partitioned views
 │
 ├── optimizer/                    # Power Plan & Hardware Tuning Module
 │   └── PowerOptimizer.ps1        # Safe CPU boost capping (99%), PCIe ASPM, & GPU tuning
@@ -50,7 +50,8 @@ ubat/
 │   └── StopLogger.ps1            # PID-based background daemon terminator
 │
 ├── analyzer/                     # Statistical Analytics & Reporting Engine
-│   └── LogAnalyzer.ps1           # Calculates average watts, drop %, runtime, and exports Markdown
+│   ├── LogAnalyzer.ps1           # Calculates average watts, drop %, runtime, and exports Markdown
+│   └── ViewLogs.ps1              # In-terminal session log viewer with File Explorer shortcut
 │
 ├── diagnostics/                  # Hardware Diagnostic Utilities
 │   ├── ProcessManager.ps1        # Task Manager-style parallel table & interactive PID killer
@@ -62,7 +63,7 @@ ubat/
 │   ├── last-report.md            # Most recently generated statistical Markdown report
 │   └── archive/                  # Historical test sessions saved by timestamp
 │
-└── README.md                     # Documentation & upgrade roadmap
+└── README.md                     # Documentation & project structure
 ```
 
 ---
@@ -70,7 +71,7 @@ ubat/
 ## How to Run
 
 ### Option A: Master Interactive Menu (Full Arrow-Key Navigation)
-Run **`ubat.bat`** from any terminal or double-click it:
+Run **`ubat --menu`** or run **`ubat.ps1`**:
 ```text
 ==========================================================================================
                    UBAT - UNIVERSAL BATTERY OPTIMIZER (HP OMEN 16)
@@ -80,24 +81,24 @@ Run **`ubat.bat`** from any terminal or double-click it:
  Choose a toolkit module to execute:
  (Use [↑ / ↓] Arrow Keys to navigate, [Enter] to select, or tap [0-9])
 
-  ► [1] Launch Live Monitor          - Flicker-free live wattage, power breakdown & process table
-    [2] Battery Health Model         - Calibrated health %, cycle life, degradation grade & pack balance
-    [3] Optimize Laptop Battery      - Safe CPU boost capping (99%), PCIe ASPM & OEM guidance
-    [4] Start Background Logger      - 30s silent crash-proof session recording into logs/
-    [5] Stop Background Logger       - Terminate active background recording daemon
-    [6] Generate Test Report         - Statistical analysis, average Watts, battery drop & Markdown export
-    [7] Process Manager & Killer     - Task Manager parallel table & interactive PID killer
-    [8] NVMe SSD Health & Speed     - Storage throughput (MB/s), active disk %, drive health & APST draw
-    [9] Open Logs Folder             - Open ubat/logs/ folder in Windows File Explorer
-    [0] Exit                         - Exit ubat toolkit
+  ► [1] Live Monitor             - Real-time battery, CPU, GPU & Task Manager heatmaps
+    [2] Battery Health           - Calibrated health %, wear level, cycle count & pack grade
+    [3] Battery Optimizer        - Tune power schemes, PCIe ASPM & safe CPU boost limits
+    [4] Process Manager          - Task Manager process table & interactive PID killer
+    [5] Storage Diagnostics      - NVMe SSD read/write speeds, drive health & APST draw
+    [6] Start Session Logger     - Record battery and power usage every 30s in background
+    [7] Stop Session Logger      - Terminate active background battery recording daemon
+    [8] Generate Test Report     - Statistical analysis, average drain Watts & runtime
+    [9] View Session Logs        - Show logs in terminal (with option to open folder)
+    [0] Exit                     - Exit ubat toolkit
 
 ------------------------------------------------------------------------------------------
  Controls: [↑ / ↓] Move Selection  |  [Enter / Space] Select  |  [0-9] Quick Jump  |  [Q] Exit
 ```
 
-### Option B: Quick 1-Click Launchers
-* **Live Monitor with Partition Picker:** Double-click `Run-Live-Monitor.bat`
-* **Optimize Laptop:** Double-click `Optimize-Laptop.bat`
-* **Start Drain Test:** Double-click `Start-Test-Logger.bat`
-* **Stop Drain Test:** Double-click `Stop-Test-Logger.bat`
-* **View Drain Report:** Double-click `Generate-Report.bat`
+### Option B: Direct Terminal Launch
+Typing **`ubat`** from any terminal opens the live monitor directly:
+- Arrow keys `[<- / ->]` or `[1-7]` cycle between All, Battery, CPU, RAM, GPU/SSD, Processes, and Logs views.
+- `[O]` opens the `logs` folder in Windows File Explorer.
+- `[K]` prompts for PID termination directly inside the terminal.
+- `[P]` toggles power schemes (HP OMEN Unbundle vs Balanced).

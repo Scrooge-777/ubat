@@ -15,6 +15,7 @@ import msvcrt
 import threading
 import subprocess
 import psutil
+import csv
 
 from rich.console import Console
 from rich.panel import Panel
@@ -289,25 +290,38 @@ def format_secs(secs):
     return f"{hrs}h {mins:02d}m Remaining"
 
 
-def build_header_panel():
-    """Creates master hardware banner."""
-    global FRAME_INDEX
-    spinner = SPINNER_FRAMES[FRAME_INDEX % len(SPINNER_FRAMES)]
-    pulse = PULSE_FRAMES[FRAME_INDEX % len(PULSE_FRAMES)]
+def get_logs_directory():
+    """Returns absolute path to logs directory."""
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
 
+
+def open_logs_folder():
+    """Opens logs directory in Windows File Explorer."""
+    global STATUS_MESSAGE, STATUS_TIME
+    logs_dir = get_logs_directory()
+    if not os.path.exists(logs_dir):
+        os.makedirs(logs_dir, exist_ok=True)
+    try:
+        os.startfile(logs_dir)
+        STATUS_MESSAGE = "Opened logs directory in Windows File Explorer."
+    except Exception as e:
+        STATUS_MESSAGE = f"Could not open logs folder: {e}"
+    STATUS_TIME = time.time()
+
+
+def build_header_panel():
+    """Creates clean, stationary hardware banner."""
     mfg = HARDWARE_INFO["manufacturer"].upper()
     model = HARDWARE_INFO["model"].upper()
     cpu = HARDWARE_INFO["cpu_name"]
 
     title_text = Text()
-    title_text.append(f" {spinner} ", style="bold cyan")
-    title_text.append("UBAT UNIVERSAL HARDWARE & BATTERY TELEMETRY ENGINE", style="bold white on #1e293b")
-    title_text.append(f" {pulse}\n", style="bold cyan")
-    title_text.append(f" SYSTEM: ", style="bold cyan")
+    title_text.append(" UBAT HARDWARE & BATTERY MONITOR \n", style="bold white on #1e293b")
+    title_text.append(" SYSTEM: ", style="bold cyan")
     title_text.append(f"{mfg} {model}", style="bold yellow")
-    title_text.append(f"  |  CPU: ", style="bold cyan")
+    title_text.append("  |  CPU: ", style="bold cyan")
     title_text.append(f"{cpu}", style="bold green")
-    title_text.append(f"  |  MODE: ", style="bold cyan")
+    title_text.append("  |  VIEW: ", style="bold cyan")
     title_text.append(f"[{CURRENT_VIEW.upper()}]", style="bold magenta")
 
     return Panel(
@@ -539,6 +553,115 @@ def build_cpu_focus_view():
     return content
 
 
+def build_logs_view():
+    """In-terminal log viewer showing active session details, recent telemetry, and archive."""
+    logs_dir = get_logs_directory()
+    curr_log = os.path.join(logs_dir, "current-session.csv")
+    pid_file = os.path.join(logs_dir, "battery-logger.pid")
+
+    # Logger process check
+    is_logging = False
+    logger_pid = None
+    if os.path.exists(pid_file):
+        try:
+            with open(pid_file, "r") as f:
+                pid_str = f.read().strip()
+                if pid_str and pid_str.isdigit():
+                    logger_pid = int(pid_str)
+                    if psutil.pid_exists(logger_pid):
+                        is_logging = True
+        except Exception:
+            pass
+
+    status_str = f"[bold green]ACTIVE (PID: {logger_pid})[/bold green]" if is_logging else "[dim yellow]INACTIVE (Stopped)[/dim yellow]"
+
+    # Summary table
+    summary_table = Table(box=box.ROUNDED, expand=True, padding=(0, 1))
+    summary_table.add_column("LOG CONFIGURATION", style="bold cyan", width=22)
+    summary_table.add_column("CURRENT STATUS", style="bold white")
+
+    summary_table.add_row("Background Daemon", status_str)
+    summary_table.add_row("Log File Path", curr_log)
+    summary_table.add_row("Explorer Shortcut", "Press [bold yellow][O][/bold yellow] to open logs folder in Windows File Explorer")
+
+    # Read current session CSV rows
+    rows = []
+    total_records = 0
+    start_pct, end_pct = 0.0, 0.0
+    used_mwh = 0.0
+    if os.path.exists(curr_log):
+        try:
+            with open(curr_log, "r", encoding="utf-8", errors="ignore") as f:
+                reader = list(csv.reader(f))
+                if len(reader) > 1:
+                    data_rows = [r for r in reader[1:] if len(r) >= 11]
+                    total_records = len(data_rows)
+                    if total_records > 0:
+                        try:
+                            start_pct = float(data_rows[0][2])
+                            end_pct = float(data_rows[-1][2])
+                            used_mwh = round(float(data_rows[0][3]) - float(data_rows[-1][3]), 1)
+                        except Exception:
+                            pass
+                        rows = data_rows[-10:]
+        except Exception:
+            pass
+
+    if total_records >= 2:
+        diff_pct = round(start_pct - end_pct, 1)
+        summary_table.add_row("Session Statistics", f"{total_records} rows logged | {start_pct:.0f}% -> {end_pct:.0f}% ({diff_pct:.1f}% used, {used_mwh} mWh consumed)")
+    else:
+        summary_table.add_row("Session Statistics", f"{total_records} rows logged")
+
+    # Archives summary table
+    archive_dir = os.path.join(logs_dir, "archive")
+    archive_files = []
+    if os.path.exists(archive_dir):
+        try:
+            for f in sorted(os.listdir(archive_dir), reverse=True)[:4]:
+                if f.endswith(".csv"):
+                    fp = os.path.join(archive_dir, f)
+                    sz_kb = round(os.path.getsize(fp) / 1024, 1)
+                    archive_files.append(f"{f} ({sz_kb} KB)")
+        except Exception:
+            pass
+
+    archive_str = ", ".join(archive_files) if archive_files else "No archived sessions."
+    summary_table.add_row("Recent Archives", archive_str)
+
+    # Telemetry rows table
+    telemetry_table = Table(box=box.SIMPLE_HEAD, expand=True, header_style="bold cyan", padding=(0, 1))
+    telemetry_table.add_column("TIMESTAMP", style="dim", width=20)
+    telemetry_table.add_column("PWR", justify="center", width=6)
+    telemetry_table.add_column("BATT %", justify="right", width=8)
+    telemetry_table.add_column("REM (mWh)", justify="right", width=11)
+    telemetry_table.add_column("DRAIN (W)", justify="right", width=10)
+    telemetry_table.add_column("CPU %", justify="right", width=8)
+    telemetry_table.add_column("RAM (GB)", justify="right", width=10)
+    telemetry_table.add_column("TOP CPU APP", style="bold yellow", width=18)
+
+    if not rows:
+        telemetry_table.add_row("--", "--", "--", "--", "--", "--", "--", "No log records found.")
+    else:
+        for r in reversed(rows):
+            ts = r[0]
+            pwr = "[green]AC[/green]" if r[1].lower() in ["true", "1"] else "[yellow]BAT[/yellow]"
+            pct = f"{r[2]}%"
+            mwh = f"{r[3]}"
+            w = f"{r[4]} W"
+            cpu = f"{r[6]}%"
+            ram = f"{r[7]} GB"
+            app = r[10][:18]
+            telemetry_table.add_row(ts, pwr, pct, mwh, w, cpu, ram, app)
+
+    layout = Layout()
+    layout.split_column(
+        Layout(Panel(summary_table, title="[bold cyan]SESSION RECORDER & LOG TELEMETRY[/bold cyan]", box=box.ROUNDED, border_style="cyan"), size=8),
+        Layout(Panel(telemetry_table, title="[bold cyan]RECENT LOG ENTRIES (IN-TERMINAL VIEWER)[/bold cyan]", box=box.ROUNDED, border_style="cyan")),
+    )
+    return layout
+
+
 def build_footer_panel():
     """Interactive hotkey footer bar."""
     global STATUS_MESSAGE, STATUS_TIME
@@ -547,7 +670,8 @@ def build_footer_panel():
     rate_str = f"{REFRESH_RATE}s"
 
     footer_text = Text()
-    footer_text.append(" [<-/-> or 1-6] Switch Views ", style="bold white on #2563eb")
+    footer_text.append(" [<-/-> or 1-7] Views ", style="bold white on #2563eb")
+    footer_text.append(" [O] Logs Folder ", style="bold white on #7c3aed")
     footer_text.append(f" [P] Power: {active_p} ", style="bold white on #059669")
     footer_text.append(f" [R] Rate: {rate_str} ", style="bold white on #0284c7")
     footer_text.append(f" [S] Sort: {PROCESS_SORT_MODE.upper()} ", style="bold white on #475569")
@@ -620,6 +744,9 @@ def render_dashboard():
 
     elif CURRENT_VIEW == "processes":
         layout["body"].update(build_process_table(limit=16))
+
+    elif CURRENT_VIEW == "logs":
+        layout["body"].update(build_logs_view())
 
     return layout
 
@@ -694,19 +821,8 @@ def toggle_process_filter():
 
 
 def run_startup_scan():
-    """Optional fast 0.6s progressive hardware scan animation."""
-    console.clear()
-    console.print("\n[bold cyan]UBAT HARDWARE TELEMETRY ENGINE INITIALIZING...[/bold cyan]")
-    steps = [
-        ("Probing ACPI Battery Controller & Wear Model...", 0.15),
-        ("Sampling Multi-Core CPU Frequencies...", 0.15),
-        ("Querying NVIDIA RTX Dedicated GPU Telemetry...", 0.15),
-        ("Calibrating NVMe Storage IOPS & APST States...", 0.15),
-    ]
-    for text, delay in steps:
-        time.sleep(delay)
-        console.print(f"  [bold green][OK][/bold green] {text}")
-    time.sleep(0.2)
+    """Instantaneous hardware initialization."""
+    pass
 
 
 def main():
@@ -728,7 +844,7 @@ def main():
     worker = threading.Thread(target=telemetry_background_worker, daemon=True)
     worker.start()
 
-    views_list = ["all", "battery", "cpu", "ram", "gpu_ssd", "processes"]
+    views_list = ["all", "battery", "cpu", "ram", "gpu_ssd", "processes", "logs"]
     last_render_time = time.time()
 
     with Live(render_dashboard(), refresh_per_second=20, screen=True, console=console) as live:
@@ -764,6 +880,11 @@ def main():
                         CURRENT_VIEW = "gpu_ssd"; view_changed = True
                     elif key == b'6':
                         CURRENT_VIEW = "processes"; view_changed = True
+                    elif key in [b'7', b'l', b'L']:
+                        CURRENT_VIEW = "logs"; view_changed = True
+                    elif key in [b'o', b'O']:
+                        open_logs_folder()
+                        view_changed = True
                     elif key in [b'k', b'K']:
                         handle_kill_process_dialog(live)
                         view_changed = True
