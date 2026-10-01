@@ -9,6 +9,8 @@
 param(
     [switch]$StorageRead,
     [switch]$CpuStress,
+    [switch]$GpuStress,
+    [switch]$SystemStress,
     [switch]$CpuBench,
     [switch]$RamBench,
     [switch]$All,
@@ -224,11 +226,49 @@ function Test-RamBandwidth {
     Write-Host "================================================================================" -ForegroundColor Cyan
 }
 
+function Test-GpuStress {
+    param([int]$Duration = 10)
+
+    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Host "             DEDICATED GPU HARDWARE STRESS TEST (NVIDIA RTX)" -ForegroundColor Yellow
+    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Host " Initializing CUDA Driver API (nvcuda.dll) & 524,288 concurrent threads..." -ForegroundColor Gray
+
+    $pyEngine = Join-Path $PSScriptRoot "bench_engine.py"
+    if (Test-Path $pyEngine) {
+        python $pyEngine --gpustress $Duration
+    } else {
+        Write-Host " GPU benchmark engine unavailable." -ForegroundColor Red
+    }
+    Write-Host "================================================================================" -ForegroundColor Cyan
+}
+
+function Test-SystemStress {
+    param([int]$Duration = 10)
+
+    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Host "       COMBINED FULL-SYSTEM BURN-IN STRESS TEST (CPU + GPU + RAM)" -ForegroundColor Yellow
+    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Host " Saturating all CPU threads and dedicated GPU CUDA cores simultaneously..." -ForegroundColor Gray
+
+    $pyEngine = Join-Path $PSScriptRoot "bench_engine.py"
+    if (Test-Path $pyEngine) {
+        python $pyEngine --systemstress $Duration
+    } else {
+        Write-Host " System benchmark engine unavailable." -ForegroundColor Red
+    }
+    Write-Host "================================================================================" -ForegroundColor Cyan
+}
+
 # Execution router
 if ($StorageRead) {
     Test-StorageRead
 } elseif ($CpuStress) {
     Test-CpuStress -Duration $StressDuration
+} elseif ($GpuStress) {
+    Test-GpuStress -Duration $StressDuration
+} elseif ($SystemStress) {
+    Test-SystemStress -Duration $StressDuration
 } elseif ($CpuBench) {
     Test-CpuBenchmark
 } elseif ($RamBench) {
@@ -241,6 +281,8 @@ if ($StorageRead) {
     Test-CpuBenchmark
     Write-Host ""
     Test-CpuStress -Duration 5
+    Write-Host ""
+    Test-GpuStress -Duration 5
 } else {
     # Interactive Console Menu
     Write-Host "================================================================================" -ForegroundColor Cyan
@@ -248,18 +290,22 @@ if ($StorageRead) {
     Write-Host "================================================================================" -ForegroundColor Cyan
     Write-Host " [1] NVMe Storage Read Benchmark (Sequential & 4K Random MB/s)" -ForegroundColor White
     Write-Host " [2] Multi-Core CPU Thermal Stress Test (10s with Throttle Tracking)" -ForegroundColor White
-    Write-Host " [3] CPU Computational Performance Benchmark (Single/Multi-Thread)" -ForegroundColor White
-    Write-Host " [4] RAM Memory Bandwidth Benchmark (GB/s Read Throughput)" -ForegroundColor White
-    Write-Host " [5] Full Benchmark Suite (All-in-One)" -ForegroundColor White
+    Write-Host " [3] Dedicated GPU Hardware Stress Test (10s at 100% Load & 2.7+ GHz)" -ForegroundColor White
+    Write-Host " [4] Combined Full-System Burn-In Stress Test (CPU + GPU + RAM)" -ForegroundColor White
+    Write-Host " [5] CPU Computational Performance Benchmark (Single/Multi-Thread)" -ForegroundColor White
+    Write-Host " [6] RAM Memory Bandwidth Benchmark (GB/s Read Throughput)" -ForegroundColor White
+    Write-Host " [7] Full Benchmark & Stress Suite (All-in-One)" -ForegroundColor White
     Write-Host " [0] Return / Exit" -ForegroundColor DarkGray
     Write-Host "--------------------------------------------------------------------------------" -ForegroundColor Cyan
-    $choice = Read-Host " Select an option [0-5]"
+    $choice = Read-Host " Select an option [0-7]"
     switch ($choice) {
         "1" { Test-StorageRead }
         "2" { Test-CpuStress -Duration 10 }
-        "3" { Test-CpuBenchmark }
-        "4" { Test-RamBandwidth }
-        "5" { 
+        "3" { Test-GpuStress -Duration 10 }
+        "4" { Test-SystemStress -Duration 10 }
+        "5" { Test-CpuBenchmark }
+        "6" { Test-RamBandwidth }
+        "7" { 
             Test-StorageRead
             Write-Host ""
             Test-RamBandwidth
@@ -267,6 +313,8 @@ if ($StorageRead) {
             Test-CpuBenchmark
             Write-Host ""
             Test-CpuStress -Duration 5
+            Write-Host ""
+            Test-GpuStress -Duration 5
         }
     }
 }

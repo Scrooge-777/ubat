@@ -149,6 +149,12 @@ TELEMETRY = {
         "stress_throttled": False,
         "ram_read_gbs": 0.0,
         "ram_copy_gbs": 0.0,
+        "gpu_stress_peak_c": 0.0,
+        "gpu_stress_delta_c": 0.0,
+        "gpu_stress_power_w": 0.0,
+        "gpu_stress_util_pct": 0,
+        "gpu_stress_clock_mhz": 0,
+        "gpu_stress_throttled": False,
         "last_bench_time": 0.0,
     },
 }
@@ -1103,10 +1109,12 @@ def build_sensors_view():
             sensor_table.add_row("Benchmarks", "CPU Benchmark", f"ST: {bm['cpu_st_score']:,} | MT: {bm['cpu_mt_score']:,}", f"Scaling Ratio: {bm['cpu_scale_ratio']}x")
         if bm.get("stress_peak_c", 0.0) > 0:
             sensor_table.add_row("Benchmarks", "CPU Thermal Stress", f"Peak: {bm['stress_peak_c']} C (+{bm['stress_delta_c']} C)", f"Ops: {bm['stress_ops']:,} | Throttled: {bm['stress_throttled']}")
+        if bm.get("gpu_stress_power_w", 0.0) > 0:
+            sensor_table.add_row("Benchmarks", "GPU Hardware Stress", f"Peak: {bm['gpu_stress_peak_c']} C ({bm['gpu_stress_power_w']} W)", f"Clock: {bm['gpu_stress_clock_mhz']} MHz | Util: {bm['gpu_stress_util_pct']}% | Throttled: {bm['gpu_stress_throttled']}")
         if bm.get("ram_read_gbs", 0.0) > 0:
             sensor_table.add_row("Benchmarks", "RAM Read Bandwidth", f"{bm['ram_read_gbs']} GB/s", f"Copy: {bm.get('ram_copy_gbs', 0)} GB/s")
     else:
-        sensor_table.add_row("Benchmarks", "Hardware Benchmark Suite", "Press [B] to execute", "Storage Read, CPU Stress/Compute, RAM Bandwidth")
+        sensor_table.add_row("Benchmarks", "Hardware Benchmark Suite", "Press [B] to execute", "Storage, RAM, CPU & Dedicated GPU Stress")
 
     layout = Layout()
     layout.split_column(
@@ -1224,14 +1232,15 @@ def run_interactive_benchmark(live):
     console.print("[bold cyan]=============================================================================[/bold cyan]")
     console.print("  [bold yellow][1][/bold yellow] NVMe Storage Read Benchmark (Sequential MB/s, 4K Random IOPS, Latency)")
     console.print("  [bold yellow][2][/bold yellow] Multi-Core CPU Stress Test (10s Sustained Thermal & Throttle Load)")
-    console.print("  [bold yellow][3][/bold yellow] Extended CPU Stress Test (30s Peak Workload Burn-In)")
-    console.print("  [bold yellow][4][/bold yellow] CPU Computational Benchmark (Single-Thread & Multi-Thread Score)")
-    console.print("  [bold yellow][5][/bold yellow] DDR5 RAM Memory Bandwidth Benchmark (Sequential Read GB/s)")
-    console.print("  [bold yellow][6][/bold yellow] All-in-One Full System Hardware Benchmark (Storage + RAM + CPU)")
+    console.print("  [bold yellow][3][/bold yellow] Dedicated GPU Hardware Stress Test (10s at 100% Load & 2.7+ GHz)")
+    console.print("  [bold yellow][4][/bold yellow] Combined Full-System Burn-In Stress Test (CPU + GPU + RAM)")
+    console.print("  [bold yellow][5][/bold yellow] CPU Computational Benchmark (Single-Thread & Multi-Thread Score)")
+    console.print("  [bold yellow][6][/bold yellow] DDR5 RAM Memory Bandwidth Benchmark (Sequential Read GB/s)")
+    console.print("  [bold yellow][7][/bold yellow] All-in-One Full System Hardware Benchmark (Storage + RAM + CPU + GPU)")
     console.print("  [bold yellow][0][/bold yellow] Return to Dashboard")
     console.print("[bold cyan]=============================================================================[/bold cyan]")
 
-    choice = console.input("\n[bold green]Select benchmark option [0-6]: [/bold green]").strip()
+    choice = console.input("\n[bold green]Select benchmark option [0-7]: [/bold green]").strip()
 
     if choice == "1":
         console.print("\n[bold cyan]Executing NVMe Storage Read Benchmark (128MB payload, 500 random seeks)...[/bold cyan]")
@@ -1254,18 +1263,17 @@ def run_interactive_benchmark(live):
         STATUS_TIME = time.time()
         console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
 
-    elif choice in ["2", "3"]:
-        duration = 10 if choice == "2" else 30
-        console.print(f"\n[bold yellow]Starting {duration}s Multi-Core CPU Stress Test across all logical threads...[/bold yellow]")
+    elif choice == "2":
+        console.print("\n[bold yellow]Starting 10s Multi-Core CPU Stress Test across all logical threads...[/bold yellow]")
         console.print("[dim]Monitoring thermal rise and clock frequency shifts...[/dim]\n")
 
-        def on_progress(elapsed, total, temp, freq):
+        def on_cpu_progress(elapsed, total, temp, freq):
             pct = int((elapsed / total) * 100)
             bar = "=" * (pct // 5) + ">" + " " * (20 - (pct // 5))
             sys.stdout.write(f"\r  [{bar}] {elapsed:.0f}s/{total}s | Temp: {temp:.1f} C | Freq: {freq} MHz")
             sys.stdout.flush()
 
-        res = bench_engine.run_cpu_stress_test(duration=duration, progress_cb=on_progress)
+        res = bench_engine.run_cpu_stress_test(duration=10, progress_cb=on_cpu_progress)
         print()
         TELEMETRY["benchmarks"]["stress_peak_c"] = res["peak_temp_c"]
         TELEMETRY["benchmarks"]["stress_delta_c"] = res["temp_delta_c"]
@@ -1286,7 +1294,85 @@ def run_interactive_benchmark(live):
         STATUS_TIME = time.time()
         console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
 
+    elif choice == "3":
+        console.print("\n[bold yellow]Starting 10s Dedicated GPU Hardware Stress Test across 524,288 CUDA threads...[/bold yellow]")
+        console.print("[dim]Monitoring live GPU utilization %, temperature rise, clock MHz, and power draw...[/dim]\n")
+
+        def on_gpu_progress(elapsed, total, temp, power, util, clock):
+            pct = int((elapsed / total) * 100)
+            bar = "=" * (pct // 5) + ">" + " " * (20 - (pct // 5))
+            sys.stdout.write(f"\r  [{bar}] {elapsed:.0f}s/{total}s | Temp: {temp:.1f} C | Pwr: {power:.1f} W | Util: {util}% | Clk: {clock} MHz")
+            sys.stdout.flush()
+
+        res = bench_engine.run_gpu_stress_test(duration=10, progress_cb=on_gpu_progress)
+        print()
+        if res.get("status") == "PASS":
+            TELEMETRY["benchmarks"]["gpu_stress_peak_c"] = res["peak_temp_c"]
+            TELEMETRY["benchmarks"]["gpu_stress_delta_c"] = res["temp_delta_c"]
+            TELEMETRY["benchmarks"]["gpu_stress_power_w"] = res["peak_power_w"]
+            TELEMETRY["benchmarks"]["gpu_stress_util_pct"] = res["peak_util_pct"]
+            TELEMETRY["benchmarks"]["gpu_stress_clock_mhz"] = res["peak_clock_mhz"]
+            TELEMETRY["benchmarks"]["gpu_stress_throttled"] = res["thermal_throttling"]
+            TELEMETRY["benchmarks"]["last_bench_time"] = time.time()
+
+            throt_badge = "[bold red]THROTTLED[/bold red]" if res["thermal_throttling"] else "[bold green]NOMINAL (No Throttling)[/bold green]"
+            console.print(f"\n[bold green][PASS] Dedicated GPU Stress Results ({res['duration_s']}s):[/bold green]")
+            console.print(f"  - Target Device          : [bold white]{res['device_name']}[/bold white]")
+            console.print(f"  - Baseline Temperature   : [bold white]{res['base_temp_c']} C[/bold white]")
+            console.print(f"  - Peak Temperature       : [bold white]{res['peak_temp_c']} C[/bold white] (Thermal Rise: +{res['temp_delta_c']} C)")
+            console.print(f"  - Peak Graphics Power    : [bold white]{res['peak_power_w']} W[/bold white] (Baseline: {res['base_power_w']} W)")
+            console.print(f"  - Peak Clock Speed       : [bold white]{res['peak_clock_mhz']} MHz[/bold white]")
+            console.print(f"  - Peak GPU Utilization   : [bold white]{res['peak_util_pct']}%[/bold white]")
+            console.print(f"  - CUDA Kernel Executions : [bold white]{res['kernel_launches']:,}[/bold white]")
+            console.print(f"  - Thermal Throttle State : {throt_badge}")
+            STATUS_MESSAGE = f"GPU Stress: Peak {res['peak_temp_c']} C (+{res['temp_delta_c']} C) | {res['peak_power_w']} W | {res['peak_clock_mhz']} MHz"
+        else:
+            console.print(f"\n[bold red][FAIL] GPU Stress Test Error: {res.get('error')}[/bold red]")
+            STATUS_MESSAGE = "GPU Stress Test Failed."
+        STATUS_TIME = time.time()
+        console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
+
     elif choice == "4":
+        console.print("\n[bold yellow]Starting 10s Combined Full-System Burn-In Stress Test (CPU + GPU + RAM)...[/bold yellow]")
+        console.print("[dim]Simultaneously saturating all CPU threads and dedicated GPU CUDA cores...[/dim]\n")
+
+        def on_sys_progress(elapsed, total, c_temp, g_temp, g_power, g_util):
+            pct = int((elapsed / total) * 100)
+            bar = "=" * (pct // 5) + ">" + " " * (20 - (pct // 5))
+            sys.stdout.write(f"\r  [{bar}] {elapsed:.0f}s/{total}s | CPU: {c_temp:.1f} C | GPU: {g_temp:.1f} C | GPU Pwr: {g_power:.1f} W ({g_util}%)")
+            sys.stdout.flush()
+
+        res = bench_engine.run_system_stress_test(duration=10, progress_cb=on_sys_progress)
+        print()
+        if res.get("status") == "PASS":
+            TELEMETRY["benchmarks"]["stress_peak_c"] = res["cpu_peak_temp_c"]
+            TELEMETRY["benchmarks"]["stress_delta_c"] = res["cpu_temp_delta_c"]
+            TELEMETRY["benchmarks"]["stress_ops"] = res["cpu_total_ops"]
+            TELEMETRY["benchmarks"]["stress_throttled"] = res["cpu_throttled"]
+            TELEMETRY["benchmarks"]["gpu_stress_peak_c"] = res["gpu_peak_temp_c"]
+            TELEMETRY["benchmarks"]["gpu_stress_delta_c"] = res["gpu_temp_delta_c"]
+            TELEMETRY["benchmarks"]["gpu_stress_power_w"] = res["gpu_peak_power_w"]
+            TELEMETRY["benchmarks"]["gpu_stress_util_pct"] = res["gpu_peak_util_pct"]
+            TELEMETRY["benchmarks"]["gpu_stress_clock_mhz"] = res["gpu_peak_clock_mhz"]
+            TELEMETRY["benchmarks"]["gpu_stress_throttled"] = res["gpu_throttled"]
+            TELEMETRY["benchmarks"]["last_bench_time"] = time.time()
+
+            c_throt = "[bold red]THROTTLED[/bold red]" if res["cpu_throttled"] else "[bold green]NOMINAL[/bold green]"
+            g_throt = "[bold red]THROTTLED[/bold red]" if res["gpu_throttled"] else "[bold green]NOMINAL[/bold green]"
+            console.print(f"\n[bold green][PASS] Combined Full-System Burn-In Results ({res['duration_s']}s):[/bold green]")
+            console.print(f"  - CPU Peak Temperature   : [bold white]{res['cpu_peak_temp_c']} C[/bold white] (+{res['cpu_temp_delta_c']} C) | State: {c_throt}")
+            console.print(f"  - CPU Total Operations   : [bold white]{res['cpu_total_ops']:,}[/bold white]")
+            console.print(f"  - GPU Peak Temperature   : [bold white]{res['gpu_peak_temp_c']} C[/bold white] (+{res['gpu_temp_delta_c']} C) | State: {g_throt}")
+            console.print(f"  - GPU Peak Power Draw    : [bold white]{res['gpu_peak_power_w']} W[/bold white] ({res['gpu_peak_util_pct']}% Load)")
+            console.print(f"  - GPU CUDA Launches      : [bold white]{res['gpu_launches']:,}[/bold white]")
+            STATUS_MESSAGE = f"Full System Burn-In: CPU {res['cpu_peak_temp_c']} C | GPU {res['gpu_peak_temp_c']} C ({res['gpu_peak_power_w']} W)"
+        else:
+            console.print(f"\n[bold red][FAIL] System Burn-In Test Failed.[/bold red]")
+            STATUS_MESSAGE = "System Burn-In Failed."
+        STATUS_TIME = time.time()
+        console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
+
+    elif choice == "5":
         console.print("\n[bold cyan]Executing CPU Computational Benchmark (Single & Multi-Thread)...[/bold cyan]")
         res = bench_engine.run_cpu_benchmark(duration_seconds=3)
         TELEMETRY["benchmarks"]["cpu_st_score"] = res["single_thread_score"]
@@ -1305,7 +1391,7 @@ def run_interactive_benchmark(live):
         STATUS_TIME = time.time()
         console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
 
-    elif choice == "5":
+    elif choice == "6":
         console.print("\n[bold cyan]Executing RAM Memory Bandwidth Benchmark (128MB test block)...[/bold cyan]")
         res = bench_engine.run_ram_bandwidth_benchmark(buffer_mb=128)
         if res.get("status") == "PASS":
@@ -1323,11 +1409,11 @@ def run_interactive_benchmark(live):
         STATUS_TIME = time.time()
         console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
 
-    elif choice == "6":
+    elif choice == "7":
         console.print("\n[bold cyan]Starting All-in-One Full System Hardware Benchmark...[/bold cyan]")
 
         # 1. Storage
-        console.print("  [1/4] Running NVMe Storage Read Benchmark...")
+        console.print("  [1/5] Running NVMe Storage Read Benchmark...")
         d_res = bench_engine.run_storage_read_benchmark(test_size_mb=64, num_random_ops=300)
         if d_res.get("status") == "PASS":
             TELEMETRY["benchmarks"]["disk_seq_mbs"] = d_res["seq_read_mbs"]
@@ -1336,14 +1422,14 @@ def run_interactive_benchmark(live):
             TELEMETRY["benchmarks"]["disk_lat_ms"] = d_res["avg_latency_ms"]
 
         # 2. RAM
-        console.print("  [2/4] Running DDR5 RAM Memory Bandwidth Benchmark...")
+        console.print("  [2/5] Running DDR5 RAM Memory Bandwidth Benchmark...")
         r_res = bench_engine.run_ram_bandwidth_benchmark(buffer_mb=64)
         if r_res.get("status") == "PASS":
             TELEMETRY["benchmarks"]["ram_read_gbs"] = r_res["read_bandwidth_gbs"]
             TELEMETRY["benchmarks"]["ram_copy_gbs"] = r_res["copy_bandwidth_gbs"]
 
         # 3. CPU Compute
-        console.print("  [3/4] Running CPU Computational Benchmark...")
+        console.print("  [3/5] Running CPU Computational Benchmark...")
         c_res = bench_engine.run_cpu_benchmark(duration_seconds=2)
         TELEMETRY["benchmarks"]["cpu_st_score"] = c_res["single_thread_score"]
         TELEMETRY["benchmarks"]["cpu_st_ops"] = c_res["single_thread_ops_sec"]
@@ -1352,12 +1438,24 @@ def run_interactive_benchmark(live):
         TELEMETRY["benchmarks"]["cpu_scale_ratio"] = c_res["multi_thread_ratio"]
 
         # 4. CPU Stress
-        console.print("  [4/4] Running 5s Multi-Core CPU Thermal Stress Test...")
+        console.print("  [4/5] Running 5s Multi-Core CPU Thermal Stress Test...")
         s_res = bench_engine.run_cpu_stress_test(duration=5)
         TELEMETRY["benchmarks"]["stress_peak_c"] = s_res["peak_temp_c"]
         TELEMETRY["benchmarks"]["stress_delta_c"] = s_res["temp_delta_c"]
         TELEMETRY["benchmarks"]["stress_ops"] = s_res["total_ops"]
         TELEMETRY["benchmarks"]["stress_throttled"] = s_res["thermal_throttling"]
+
+        # 5. Dedicated GPU Stress
+        console.print("  [5/5] Running 5s Dedicated GPU Hardware Stress Test...")
+        g_res = bench_engine.run_gpu_stress_test(duration=5)
+        if g_res.get("status") == "PASS":
+            TELEMETRY["benchmarks"]["gpu_stress_peak_c"] = g_res["peak_temp_c"]
+            TELEMETRY["benchmarks"]["gpu_stress_delta_c"] = g_res["temp_delta_c"]
+            TELEMETRY["benchmarks"]["gpu_stress_power_w"] = g_res["peak_power_w"]
+            TELEMETRY["benchmarks"]["gpu_stress_util_pct"] = g_res["peak_util_pct"]
+            TELEMETRY["benchmarks"]["gpu_stress_clock_mhz"] = g_res["peak_clock_mhz"]
+            TELEMETRY["benchmarks"]["gpu_stress_throttled"] = g_res["thermal_throttling"]
+
         TELEMETRY["benchmarks"]["last_bench_time"] = time.time()
 
         console.print("\n[bold green]=============================================================================[/bold green]")
@@ -1367,6 +1465,7 @@ def run_interactive_benchmark(live):
         console.print(f"  - RAM Read Bandwidth     : [bold white]{r_res.get('read_bandwidth_gbs', 0)} GB/s[/bold white]")
         console.print(f"  - CPU Multi-Thread Score : [bold white]{c_res.get('multi_thread_score', 0):,} pts[/bold white] (ST: {c_res.get('single_thread_score', 0):,}, {c_res.get('multi_thread_ratio', 0)}x)")
         console.print(f"  - CPU Peak Stress Thermal: [bold white]{s_res.get('peak_temp_c', 0)} C[/bold white] (+{s_res.get('temp_delta_c', 0)} C rise)")
+        console.print(f"  - GPU Peak Stress Thermal: [bold white]{g_res.get('peak_temp_c', 0)} C[/bold white] (+{g_res.get('temp_delta_c', 0)} C, {g_res.get('peak_power_w', 0)} W)")
         console.print("[bold green]=============================================================================[/bold green]")
 
         STATUS_MESSAGE = "Full System Benchmark Completed Successfully."

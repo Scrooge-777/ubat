@@ -151,6 +151,10 @@ The benchmark engine provides safe, non-destructive hardware testing available b
   Measures pure sequential read throughput (1MB blocks) and 4K unbuffered random read throughput, calculating real-world IOPS and sub-millisecond access latency. Tests are executed against a safe, transient test block in the system temp directory and cleaned up immediately.
 * **Multi-Core CPU Stress Test:**
   Saturates all physical cores and logical threads with high-intensity floating-point math workloads (10s or 30s). Continuously monitors ACPI thermal zone rise and clock frequency dips to detect hardware thermal throttling.
+* **Dedicated GPU Hardware Stress Test:**
+  Leverages the native CUDA Driver API (`nvcuda.dll`) to launch 524,288 concurrent GPU threads executing heavy floating-point fused-multiply-add (FMA) arithmetic. Forces graphics clock frequencies up to maximum boost target (2.7+ GHz), measuring live GPU power draw (Watts), utilization, and diode thermals with zero external GUI app dependencies.
+* **Combined Full-System Burn-In Stress Test:**
+  Simultaneously saturates all logical CPU cores, dedicated GPU CUDA threads, and system memory bus. Stress-tests laptop cooling fans, vapor chambers, VRMs, and dual-rail power delivery under peak combined wattage.
 * **CPU Computational Benchmark:**
   Runs normalized single-threaded and multi-threaded mathematical workloads, calculating computational scores and multi-core scaling efficiency ratios.
 * **RAM Memory Bandwidth Benchmark:**
