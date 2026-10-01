@@ -21,7 +21,7 @@ function Show-LogViewer {
     } catch { $w = 88 }
 
     Write-Host ("=" * $w) -ForegroundColor Cyan
-    Write-Host (" " * [math]::Max(0, [math]::Floor(($w - 24) / 2)) + "UBAT SESSION LOG VIEWER") -ForegroundColor Yellow
+    Write-Host (" " * [math]::Max(0, [math]::Floor(($w - 24) / 2)) + "OMNI SESSION LOG VIEWER") -ForegroundColor Yellow
     Write-Host ("=" * $w) -ForegroundColor Cyan
 
     # 1. Daemon Status
