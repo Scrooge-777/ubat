@@ -71,34 +71,103 @@ function Get-HardwareProfile {
         }
     } catch {}
 
-    # NVIDIA PCIe link state (e.g. Gen5 x8 vs Gen1 x1 idle)
-    $pcieLink = "N/A"
+    # Motherboard & BIOS
+    $bb = Get-CimInstance Win32_BaseBoard -ErrorAction SilentlyContinue
+    $boardMfg = if ($bb.Manufacturer) { $bb.Manufacturer.Trim() } else { $mfg }
+    $boardProd = if ($bb.Product) { $bb.Product.Trim() } else { "Motherboard" }
+    $biosVer = if ($bios.SMBIOSBIOSVersion) { $bios.SMBIOSBIOSVersion.Trim() } else { "N/A" }
+    $biosDate = if ($bios.ReleaseDate) { (Get-Date $bios.ReleaseDate).ToString("yyyy-MM-dd") } else { "N/A" }
+
+    # Native CPU Thermal & Clock Telemetry
+    $tz = Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction SilentlyContinue
+    $cpuTempC = if ($tz -and $tz.CurrentTemperature) { [math]::Round(($tz.CurrentTemperature - 2732) / 10, 1) } else { 0 }
+    $cpuFreqMHz = 0
+    try {
+        $freqCounter = (Get-Counter '\Processor Information(*)\Processor Frequency' -ErrorAction SilentlyContinue).CounterSamples | Where-Object { $_.InstanceName -eq '_total' } | Select-Object -ExpandProperty CookedValue
+        if ($freqCounter) { $cpuFreqMHz = [math]::Round($freqCounter) }
+    } catch {}
+
+    # NVIDIA Deep Telemetry
+    $gpuDriver = "N/A"
+    $gpuTemp = 0
+    $gpuPowerW = 0.0
+    $gpuVramTotalMB = 0
+    $gpuVramUsedMB = 0
+    $gpuMemClockMHz = 0
+    $gpuCoreClockMHz = 0
+    $gpuThrottle = "None"
     if ($hasNvidia) {
         try {
-            $nvPcie = nvidia-smi --query-gpu=pcie.link.gen.current,pcie.link.width.current --format=csv,noheader,nounits 2>$null
-            if ($nvPcie) {
-                $pParts = $nvPcie.Trim() -split ','
-                $pcieLink = "Gen$($pParts[0].Trim()) x$($pParts[1].Trim())"
+            $nvDeep = nvidia-smi --query-gpu=driver_version,temperature.gpu,memory.total,memory.used,clocks.current.graphics,clocks.current.memory,power.draw,pcie.link.gen.current,pcie.link.width.current,clocks_throttle_reasons.active --format=csv,noheader,nounits 2>$null
+            if ($nvDeep) {
+                $dp = $nvDeep.Trim() -split ','
+                if ($dp.Count -ge 10) {
+                    $gpuDriver = $dp[0].Trim()
+                    $gpuTemp = [int]$dp[1].Trim()
+                    $gpuVramTotalMB = [int]$dp[2].Trim()
+                    $gpuVramUsedMB = [int]$dp[3].Trim()
+                    $gpuCoreClockMHz = [int]$dp[4].Trim()
+                    $gpuMemClockMHz = [int]$dp[5].Trim()
+                    $gpuPowerW = [double]$dp[6].Trim()
+                    $pcieLink = "Gen$($dp[7].Trim()) x$($dp[8].Trim())"
+                    $gpuThrottle = $dp[9].Trim()
+                }
             }
         } catch {}
     }
 
+    # Physical Storage SMART
+    $diskModel = "NVMe SSD"
+    $diskHealth = "OK"
+    $diskWear = 0
+    $diskTemp = 0
+    try {
+        $pd = Get-PhysicalDisk | Select-Object -First 1
+        $rc = Get-StorageReliabilityCounter -PhysicalDisk $pd -ErrorAction SilentlyContinue
+        if ($pd) {
+            $diskModel = $pd.FriendlyName
+            $diskHealth = $pd.HealthStatus
+        }
+        if ($rc) {
+            $diskWear = $rc.Wear
+            $diskTemp = $rc.Temperature
+        }
+    } catch {}
+
     return [PSCustomObject]@{
-        Manufacturer = $mfg
-        Model        = $model
-        CpuName      = $cpuName
-        HasNvidia    = $hasNvidia
-        HasAmd       = $hasAmd
-        DgpuName     = $dgpuName
-        FullCapMwh   = $fullCapMwh
-        DesignCapMwh = $designCapMwh
-        HealthPct    = $healthPct
-        TotalRamMB   = $totalRamMB
-        TotalRamGB   = $totalRamGB
-        RamSpeedMTs  = $ramSpeed
-        RamModules   = $ramModules
-        GpuPcieLink  = $pcieLink
-        GpuList      = $gpus
+        Manufacturer    = $mfg
+        Model           = $model
+        BoardMfg        = $boardMfg
+        BoardProduct    = $boardProd
+        BiosVersion     = $biosVer
+        BiosDate        = $biosDate
+        CpuName         = $cpuName
+        CpuTempC        = $cpuTempC
+        CpuFreqMHz      = $cpuFreqMHz
+        HasNvidia       = $hasNvidia
+        HasAmd          = $hasAmd
+        DgpuName        = $dgpuName
+        GpuDriver       = $gpuDriver
+        GpuTemp         = $gpuTemp
+        GpuPowerW       = $gpuPowerW
+        GpuVramTotalMB  = $gpuVramTotalMB
+        GpuVramUsedMB   = $gpuVramUsedMB
+        GpuMemClockMHz  = $gpuMemClockMHz
+        GpuCoreClockMHz = $gpuCoreClockMHz
+        GpuThrottle     = $gpuThrottle
+        GpuPcieLink     = $pcieLink
+        FullCapMwh      = $fullCapMwh
+        DesignCapMwh    = $designCapMwh
+        HealthPct       = $healthPct
+        TotalRamMB      = $totalRamMB
+        TotalRamGB      = $totalRamGB
+        RamSpeedMTs     = $ramSpeed
+        RamModules      = $ramModules
+        DiskModel       = $diskModel
+        DiskHealth      = $diskHealth
+        DiskWearPct     = $diskWear
+        DiskTempC       = $diskTemp
+        GpuList         = $gpus
     }
 }
 
@@ -221,21 +290,30 @@ if ($ShowUi -or ($MyInvocation.InvocationName -and $MyInvocation.InvocationName 
     $p = Get-HardwareProfile
     $m = Get-LiveMetrics -HardwareProfile $p
     Write-Host "================================================================================" -ForegroundColor Cyan
-    Write-Host "                  OMNI - PHYSICAL HARDWARE & SENSOR PROFILE" -ForegroundColor Yellow
+    Write-Host "                  OMNI - NATIVE DEEP HARDWARE & SENSOR MATRIX" -ForegroundColor Yellow
     Write-Host "================================================================================" -ForegroundColor Cyan
     Write-Host " System Model   : $($p.Manufacturer) $($p.Model)" -ForegroundColor White
+    Write-Host " Motherboard    : $($p.BoardMfg) $($p.BoardProduct) | BIOS $($p.BiosVersion) ($($p.BiosDate))" -ForegroundColor White
     Write-Host " CPU Details    : $($p.CpuName)" -ForegroundColor White
+    $tempStr = if ($p.CpuTempC -gt 0) { "$($p.CpuTempC) C" } else { "Active" }
+    $freqStr = if ($p.CpuFreqMHz -gt 0) { "@ $($p.CpuFreqMHz) MHz" } else { "" }
+    Write-Host " CPU Thermals   : Thermal Zone $tempStr $freqStr (Load: $($m.CpuLoad)%)" -ForegroundColor White
     Write-Host " Memory (RAM)   : $($p.TotalRamGB) GB Total | $($p.RamSpeedMTs) MT/s Clock Speed" -ForegroundColor White
     if ($p.RamModules) {
         foreach ($mod in $p.RamModules) {
             Write-Host "   Module       : $($mod.Bank) - $($mod.Manufacturer) $($mod.PartNumber) ($($mod.CapacityGB) GB @ $($mod.SpeedMTs) MT/s)" -ForegroundColor Gray
         }
     }
-    Write-Host " Primary GPU    : $(if ($p.DgpuName) { $p.DgpuName } else { 'Integrated Graphics' })" -ForegroundColor White
-    Write-Host " GPU PCIe Link  : $($p.GpuPcieLink)" -ForegroundColor White
+    if ($p.HasNvidia) {
+        Write-Host " Primary GPU    : $($p.DgpuName) (Driver $($p.GpuDriver))" -ForegroundColor White
+        Write-Host " GPU Telemetry  : $($p.GpuTemp) C | $($p.GpuPowerW) W | VRAM: $($p.GpuVramUsedMB) MB / $($p.GpuVramTotalMB) MB | Mem: $($p.GpuMemClockMHz) MHz" -ForegroundColor White
+        Write-Host " GPU PCIe Link  : $($p.GpuPcieLink) | Throttle State: $($p.GpuThrottle)" -ForegroundColor White
+    } else {
+        Write-Host " Primary GPU    : Integrated Graphics" -ForegroundColor White
+    }
+    Write-Host " NVMe Storage   : $($p.DiskModel) | $($p.DiskHealth) (Wear: $($p.DiskWearPct)% | $($p.DiskTempC) C)" -ForegroundColor White
     Write-Host " Battery Health : $($p.HealthPct)% ($($p.FullCapMwh) mWh / $($p.DesignCapMwh) mWh)" -ForegroundColor White
     Write-Host "================================================================================" -ForegroundColor Cyan
-    Write-Host " Live CPU Load  : $($m.CpuLoad)%" -ForegroundColor White
     Write-Host " Live RAM Used  : $($m.UsedRamGB) GB / $($m.TotalRamGB) GB ($($m.RamPercent)%)" -ForegroundColor White
     $pwrStr = if ($m.PowerOnline) { "AC Connected" } else { "Battery Power ($($m.DischargeWatts) W)" }
     Write-Host " Power Source   : $pwrStr" -ForegroundColor White

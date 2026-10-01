@@ -14,9 +14,9 @@ Whenever **OMNI** runs on any PC, it automatically detects the exact brand and h
 
 ### High-Performance Terminal Interface
 **OMNI** provides clean, high-performance terminal environments:
-1. **Live System Monitor (Python & Rich Engine):** Instantaneous 25ms keystroke response, btop-style dynamic micro-gauges, NVMe SSD partition meters, SMART wear degradation %, DDR5 RAM speed, NVIDIA PCIe link negotiation, HWiNFO64 shared memory bridge for fan RPMs and VRM thermals, in-terminal session logs, and interactive PID killer.
+1. **Live System Monitor (Python & Rich Engine):** Instantaneous 25ms keystroke response, btop-style dynamic micro-gauges, NVMe SSD partition meters, SMART wear degradation %, DDR5 RAM speed, NVIDIA PCIe link negotiation, native CPU thermal zones, in-terminal session logs, and interactive PID killer.
 2. **Native Console Hub (PowerShell):** Zero-dependency, flicker-free in-place console monitor with nested sub-menus ("option inside an option") and comprehensive "all option in one option" views.
-3. **HWiNFO64 Integration (v8.52 Bridge):** In-memory zero-latency memory-mapped file reader (Global\HWiNFO_SENS_SM2) reading CPU/GPU Fan RPM, VRM MOSFET temperature, and GPU hotspot thermals with 1-click launcher.
+3. **Native Deep Sensor & Hardware Matrix:** 100% native hardware and sensor inspection embedded directly in code. Zero external app dependency - queries Motherboard (HP 8D3F), BIOS version/date (F.14), ACPI CPU thermal zones (MSAcpi), processor clock frequencies, deep NVIDIA dGPU telemetry (clocks, VRAM, PCIe Gen5 x8, throttle codes), DDR5 SPD topology, and NVMe SMART reliability counters.
 
 ---
 
@@ -27,7 +27,6 @@ ubat/
 |
 +-- omni.bat                      # Master Executable Launcher (Runs OMNI live terminal monitor directly)
 +-- ubat.bat                      # Backward-compatible CLI Launcher
-+-- Launch-HWiNFO.bat             # 1-Click Launch: Background HWiNFO64 sensors mode
 +-- Run-TUI.bat                   # 1-Click Launch: Python Live System Monitor
 +-- Run-Live-Monitor.bat          # 1-Click Launch: Native PowerShell Console Monitor
 +-- Optimize-Laptop.bat           # 1-Click Launch: Auto-profile hardware & optimize power settings
@@ -41,7 +40,7 @@ ubat/
 |   \-- hwinfo_bridge.py          # Zero-latency mmap bridge for HWiNFO_SENS_SM2 shared memory
 |
 +-- core/                         # Core Hardware Profiling Engine
-|   +-- HardwareProfile.ps1       # Auto-detects OEM, CPU, GPUs, DDR5 MT/s, PCIe link, RAM modules
+|   +-- HardwareProfile.ps1       # Auto-detects OEM, Motherboard, BIOS, CPU thermals, GPUs, DDR5, NVMe SMART
 |   \-- BatteryHealthModel.ps1    # Algorithmic health grade, calibrated charge %, & cycle life
 |
 +-- monitor/                      # Live Visualization Module
@@ -93,7 +92,7 @@ Run **`omni --menu`** or **`ubat --menu`**:
     [4] CPU & Memory Hub         - Multi-thread core loads, RAM volume & frequency limits
     [5] Process Manager Hub      - Fast resource monitor & interactive PID killer
     [6] Session Logs & Reports   - In-terminal session logs, analysis reports & folder access
-    [7] HWiNFO64 Sensor Hub      - Launch HWiNFO64 v8.52 sensors & stream memory-mapped telemetry
+    [7] Native Deep Sensor Hub   - Complete Motherboard, BIOS, CPU thermals, GPU & NVMe SMART matrix
     [0] Exit                     - Exit OMNI toolkit
 
 ------------------------------------------------------------------------------------------
@@ -102,8 +101,8 @@ Run **`omni --menu`** or **`ubat --menu`**:
 
 ### Option B: Direct Terminal Launch
 Typing **`omni`** or **`ubat`** from any terminal opens the live monitor directly:
-* Arrow keys `[<- / ->]` or `[1-8]` cycle between All, Battery, CPU, RAM, Storage, Processes, Logs, and HWiNFO views.
-* `[H]` launches the HWiNFO64 background sensor engine and activates real-time fan RPM and thermal streaming.
+* Arrow keys `[<- / ->]` or `[1-8]` cycle between All, Battery, CPU, RAM, Storage, Processes, Logs, and Sensors views.
+* `[8]` or `[H]` opens the Native Deep Sensor Matrix and triggers an instant hardware bus poll.
 * `[T]` triggers real-time volume TRIM & SSD optimization on all mounted partitions.
 * `[O]` opens the `logs` folder in Windows File Explorer.
 * `[K]` prompts for PID termination directly inside the terminal.

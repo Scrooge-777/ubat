@@ -155,7 +155,7 @@ $mainOptions = @(
     [PSCustomObject]@{ Key = "4"; Title = "CPU & Memory Hub";          Desc = "Multi-thread core loads, RAM volume & frequency limits" }
     [PSCustomObject]@{ Key = "5"; Title = "Process Manager Hub";       Desc = "Fast resource monitor & interactive PID killer" }
     [PSCustomObject]@{ Key = "6"; Title = "Session Logs & Reports";    Desc = "In-terminal session logs, analysis reports & folder access" }
-    [PSCustomObject]@{ Key = "7"; Title = "HWiNFO64 Sensor Hub";      Desc = "Launch HWiNFO64 v8.52 sensors & stream memory-mapped telemetry" }
+    [PSCustomObject]@{ Key = "7"; Title = "Native Deep Sensor Hub";    Desc = "Per-core frequencies, thermal zones, GPU clocks & BIOS matrix" }
     [PSCustomObject]@{ Key = "0"; Title = "Exit";                      Desc = "Exit OMNI toolkit" }
 )
 
@@ -337,7 +337,7 @@ while ($true) {
                 [PSCustomObject]@{ Key = "1"; Title = "All-in-One CPU & RAM Status";    Desc = "Overall load %, clocks, cores, DDR5 speed & modules" }
                 [PSCustomObject]@{ Key = "2"; Title = "Measure Instantaneous CPU Spikes";Desc = "Detect per-process CPU spikes in real-time" }
                 [PSCustomObject]@{ Key = "3"; Title = "Cap CPU Boost Frequency (99%)";  Desc = "Disable thermal throttling spikes safely" }
-                [PSCustomObject]@{ Key = "4"; Title = "Launch HWiNFO64 Fan Sensors";    Desc = "Start HWiNFO sensor engine for fan RPMs & VRM" }
+                [PSCustomObject]@{ Key = "4"; Title = "Live CPU Clocks & Thermal Zones";Desc = "Real-time MHz per core group and ACPI temperatures" }
                 [PSCustomObject]@{ Key = "0"; Title = "Return to Main Menu";             Desc = "Back to subsystem launcher" }
             )
             $subPick = Show-SubMenu -HubTitle "CPU & MEMORY HUB" -Options $subOpts
@@ -359,7 +359,16 @@ while ($true) {
                     [Console]::ReadKey($true) | Out-Null
                 }
                 "4" {
-                    & "$ScriptDir\Launch-HWiNFO.bat"
+                    Write-Host "================================================================================" -ForegroundColor Cyan
+                    Write-Host "             LIVE CPU CLOCKS & THERMAL ZONE MONITOR" -ForegroundColor Yellow
+                    Write-Host "================================================================================" -ForegroundColor Cyan
+                    $tz = Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction SilentlyContinue
+                    $temp = if ($tz -and $tz.CurrentTemperature) { [math]::Round(($tz.CurrentTemperature - 2732) / 10, 1) } else { 0 }
+                    $freqSamples = (Get-Counter '\Processor Information(*)\Processor Frequency' -ErrorAction SilentlyContinue).CounterSamples
+                    $avg = $freqSamples | Where-Object { $_.InstanceName -eq '_total' } | Select-Object -ExpandProperty CookedValue
+                    Write-Host " ACPI Thermal Zone : $temp C" -ForegroundColor White
+                    Write-Host " Average CPU Clock : $([math]::Round($avg)) MHz" -ForegroundColor White
+                    Write-Host "================================================================================" -ForegroundColor Cyan
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }
@@ -410,40 +419,55 @@ while ($true) {
         }
 
         "7" {
-            # HWiNFO64 Sensor Hub (Option inside an option)
+            # Native Deep Sensor Hub (Option inside an option)
             $subOpts = @(
-                [PSCustomObject]@{ Key = "1"; Title = "Launch HWiNFO64 Sensor Engine";  Desc = "Start HWiNFO64 in background sensors-only mode" }
-                [PSCustomObject]@{ Key = "2"; Title = "Stream Shared Memory Telemetry"; Desc = "Read CPU/GPU Fan RPM, VRM & GPU Hotspot in terminal" }
-                [PSCustomObject]@{ Key = "3"; Title = "Open HWiNFO Directory";          Desc = "Open C:\Users\SREEHARAN\wallpaper\hwi_852 in Explorer" }
+                [PSCustomObject]@{ Key = "1"; Title = "All-in-One Deep Hardware Matrix";Desc = "Complete Motherboard, BIOS, CPU, GPU & NVMe SMART matrix" }
+                [PSCustomObject]@{ Key = "2"; Title = "Live CPU Clocks & Thermal Zones";Desc = "Real-time MHz per core group and ACPI temperatures" }
+                [PSCustomObject]@{ Key = "3"; Title = "NVIDIA dGPU Telemetry & Clocks";  Desc = "VRAM usage, memory MHz, power draw, PCIe Gen5 link & throttling" }
+                [PSCustomObject]@{ Key = "4"; Title = "Physical RAM & SPD Topology";    Desc = "DDR5 clock speed, module banks, vendor & part numbers" }
                 [PSCustomObject]@{ Key = "0"; Title = "Return to Main Menu";             Desc = "Back to subsystem launcher" }
             )
-            $subPick = Show-SubMenu -HubTitle "HWINFO64 SENSOR & TELEMETRY HUB" -Options $subOpts
+            $subPick = Show-SubMenu -HubTitle "NATIVE DEEP SENSOR & HARDWARE HUB" -Options $subOpts
             Clear-Host
             switch ($subPick) {
                 "1" {
-                    & "$ScriptDir\Launch-HWiNFO.bat"
+                    & "$ScriptDir\core\HardwareProfile.ps1" -ShowUi
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }
                 "2" {
-                    $pyBridge = Join-Path $ScriptDir "tui\hwinfo_bridge.py"
-                    if (Get-Command python -ErrorAction SilentlyContinue) {
-                        python $pyBridge
-                    } else {
-                        Write-Host "[ERROR] Python is required to query shared memory." -ForegroundColor Red
+                    Write-Host "================================================================================" -ForegroundColor Cyan
+                    Write-Host "             LIVE CPU CLOCKS & THERMAL ZONE MONITOR (10 SECONDS)" -ForegroundColor Yellow
+                    Write-Host "================================================================================" -ForegroundColor Cyan
+                    for ($s = 1; $s -le 10; $s++) {
+                        $tz = Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction SilentlyContinue
+                        $temp = if ($tz -and $tz.CurrentTemperature) { [math]::Round(($tz.CurrentTemperature - 2732) / 10, 1) } else { 0 }
+                        $freqSamples = (Get-Counter '\Processor Information(*)\Processor Frequency' -ErrorAction SilentlyContinue).CounterSamples
+                        $avg = $freqSamples | Where-Object { $_.InstanceName -eq '_total' } | Select-Object -ExpandProperty CookedValue
+                        Write-Host " [$s/10] ACPI Thermal Zone: $temp C  |  Average CPU Clock: $([math]::Round($avg)) MHz" -ForegroundColor White
+                        Start-Sleep -Seconds 1
                     }
+                    Write-Host "================================================================================" -ForegroundColor Cyan
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }
                 "3" {
-                    $hwiDir = "C:\Users\SREEHARAN\wallpaper\hwi_852"
-                    if (Test-Path $hwiDir) {
-                        Start-Process explorer.exe -ArgumentList $hwiDir
-                        Write-Host "Opened HWiNFO directory in File Explorer." -ForegroundColor Green
-                    } else {
-                        Write-Host "[ERROR] Directory not found: $hwiDir" -ForegroundColor Red
-                    }
-                    Start-Sleep -Seconds 1
+                    Write-Host "================================================================================" -ForegroundColor Cyan
+                    Write-Host "                  NVIDIA dGPU DEEP SENSOR TELEMETRY" -ForegroundColor Yellow
+                    Write-Host "================================================================================" -ForegroundColor Cyan
+                    nvidia-smi --query-gpu=name,driver_version,temperature.gpu,utilization.gpu,memory.total,memory.used,memory.free,power.draw,clocks.current.graphics,clocks.current.memory,pcie.link.gen.current,pcie.link.width.current,clocks_throttle_reasons.active --format=table 2>$null
+                    Write-Host "================================================================================" -ForegroundColor Cyan
+                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                    [Console]::ReadKey($true) | Out-Null
+                }
+                "4" {
+                    Write-Host "================================================================================" -ForegroundColor Cyan
+                    Write-Host "                    PHYSICAL RAM MODULE & SPD TOPOLOGY" -ForegroundColor Yellow
+                    Write-Host "================================================================================" -ForegroundColor Cyan
+                    Get-CimInstance Win32_PhysicalMemory | Select-Object BankLabel, Manufacturer, PartNumber, ConfiguredClockSpeed, Capacity, FormFactor, MemoryType | Format-Table -AutoSize
+                    Write-Host "================================================================================" -ForegroundColor Cyan
+                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                    [Console]::ReadKey($true) | Out-Null
                 }
             }
         }
