@@ -293,7 +293,7 @@ def build_battery_panel():
     table.add_column("Key", style="bold cyan", width=18)
     table.add_column("Value", style="bold white")
 
-    power_src = "[bold #00ff88]⚡ AC ADAPTER CONNECTED[/bold #00ff88]" if plugged else "[bold yellow]🔋 ON BATTERY POWER[/bold yellow]"
+    power_src = "[bold #00ff88][AC] ADAPTER CONNECTED[/bold #00ff88]" if plugged else "[bold yellow][BAT] ON BATTERY POWER[/bold yellow]"
     table.add_row("Power Source", power_src)
     table.add_row("Charge Level", make_progress_bar(pct, width=22, color=batt_color))
     table.add_row("Health Grade", f"[bold green]{grade}[/bold green] (Wear: [bold yellow]{wear}%[/bold yellow])")
@@ -303,7 +303,7 @@ def build_battery_panel():
     table.add_row("Charge/Drain", f"[bold magenta]{rate_str}[/bold magenta]")
     table.add_row("Estimated Time", format_secs(secs) if not plugged else "Plugged In (Protected)")
 
-    return Panel(table, title="[bold cyan]🔋 Battery & Power Health[/bold cyan]", border_style="cyan", box=box.ROUNDED)
+    return Panel(table, title="[bold cyan]BATTERY & POWER HEALTH[/bold cyan]", border_style="cyan", box=box.ROUNDED)
 
 
 def build_cpu_ram_panel():
@@ -334,7 +334,7 @@ def build_cpu_ram_panel():
             core_sparks += f"[{col}]{char}[/{col}]"
         table.add_row("Core Visualizer", f"{core_sparks} [dim]({len(cores)} Cores)[/dim]")
 
-    return Panel(table, title="[bold cyan]⚡ CPU & Memory Hub[/bold cyan]", border_style="cyan", box=box.ROUNDED)
+    return Panel(table, title="[bold cyan]CPU & MEMORY HUB[/bold cyan]", border_style="cyan", box=box.ROUNDED)
 
 
 def build_gpu_ssd_panel():
@@ -356,7 +356,7 @@ def build_gpu_ssd_panel():
     table.add_row("NVMe Read", f"[bold green]{read_mb:.1f} MB/s[/bold green] [dim]throughput[/dim]")
     table.add_row("NVMe Write", f"[bold cyan]{write_mb:.1f} MB/s[/bold cyan] [dim]throughput[/dim]")
 
-    return Panel(table, title="[bold cyan]🎮 GPU & NVMe Storage Telemetry[/bold cyan]", border_style="cyan", box=box.ROUNDED)
+    return Panel(table, title="[bold cyan]GPU & NVME STORAGE TELEMETRY[/bold cyan]", border_style="cyan", box=box.ROUNDED)
 
 
 def build_process_table(limit=7):
@@ -379,7 +379,7 @@ def build_process_table(limit=7):
                 f"{p['mem_mb']:.1f} MB",
             )
 
-    return Panel(table, title="[bold cyan]📊 Top Resource Consuming Processes (Live Task Manager)[/bold cyan]", border_style="cyan", box=box.ROUNDED)
+    return Panel(table, title="[bold cyan]TOP RESOURCE CONSUMING PROCESSES (TASK MANAGER)[/bold cyan]", border_style="cyan", box=box.ROUNDED)
 
 
 def build_footer_panel():
@@ -399,7 +399,7 @@ def build_footer_panel():
     footer_text.append(" [Q] Quit ", style="bold white on #475569")
 
     if STATUS_MESSAGE and (time.time() - STATUS_TIME < 4.0):
-        footer_text.append(f"\n 🔔 {STATUS_MESSAGE}", style="bold yellow")
+        footer_text.append(f"\n [INFO] {STATUS_MESSAGE}", style="bold yellow")
 
     return Panel(Align.center(footer_text), box=box.ROUNDED, border_style="dim white", padding=(0, 0))
 

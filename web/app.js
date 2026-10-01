@@ -186,7 +186,7 @@ function updateUI(data) {
     }
 
     batteryPctVal.textContent = `${pct}%`;
-    batteryStateIcon.textContent = b.plugged ? '⚡' : '🔋';
+    batteryStateIcon.textContent = b.plugged ? 'AC' : 'BAT';
     batteryStatusSub.textContent = b.plugged ? 'PLUGGED IN' : 'BATTERY DISCHARGING';
     batteryPowerBadge.textContent = b.plugged ? 'AC CONNECTED' : 'ON BATTERY';
     batteryWattageVal.textContent = (b.wattage || 0.0).toFixed(2);
