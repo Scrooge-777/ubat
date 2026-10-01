@@ -7,7 +7,7 @@ if "%1"=="-m" goto RunMenu
 if "%1"=="-Menu" goto RunMenu
 if "%1"=="/menu" goto RunMenu
 
-:: Launch flagship animated Terminal UI directly
+:: Launch flagship terminal UI directly
 python "%~dp0tui\ubat_tui.py" %*
 if %ERRORLEVEL% EQU 0 exit /b
 

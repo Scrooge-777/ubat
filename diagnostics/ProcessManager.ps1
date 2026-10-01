@@ -1,112 +1,147 @@
 <#
 .SYNOPSIS
-    Task Manager-Style Process Power Manager & Interactive Killer
+    Fast Interactive Process Power Manager & Killer
 .DESCRIPTION
-    Displays a parallel tabular column view of active processes sorted by resource drain,
-    identifies which apps are locking the NVIDIA GPU or spiking CPU/RAM/Disk,
-    and provides an interactive prompt to kill rogue processes instantly.
+    High-speed, low-latency process manager using direct .NET/Process APIs.
+    Identifies high-resource applications, allows instant termination by PID,
+    and monitors memory/CPU drain without WMI latency.
 #>
 
+$ScriptDir = Split-Path $PSScriptRoot -Parent
+$cpuCount = [Environment]::ProcessorCount
 $totalRamMB = 16384
 try {
     $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
     if ($os -and $os.TotalVisibleMemorySize) { $totalRamMB = [math]::Round($os.TotalVisibleMemorySize / 1024, 0) }
 } catch {}
-$cpuCount = [Environment]::ProcessorCount
 
-function Get-ProcessTable {
-    # Query live performance proc metrics
-    $perfProcs = Get-CimInstance Win32_PerfFormattedData_PerfProc_Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch '_Total|Idle' }
-    
-    # Query NVIDIA active processes if available
-    $nvidiaPids = @()
-    try {
-        $nv = nvidia-smi --query-compute-apps=pid --format=csv,noheader,nounits 2>$null
-        if ($nv) { $nvidiaPids += ($nv -split "`r`n") | ForEach-Object { [int]$_.Trim() } }
-    } catch {}
+$sortMode = "CPU"
+$statusMsg = ""
 
-    $rows = foreach ($p in $perfProcs) {
-        $pidNum = $p.IDProcess
-        if ($pidNum -eq 0 -or $pidNum -eq 4) { continue } # skip System / Idle for kill list
-        
-        $cpuPct = [math]::Round($p.PercentProcessorTime / $cpuCount, 1)
-        $ramMB = [math]::Round($p.WorkingSetPrivate / 1MB, 1)
-        $ramPct = [math]::Round(($ramMB / $totalRamMB) * 100, 1)
-        $diskKBs = [math]::Round(($p.IOReadBytesPersec + $p.IOWriteBytesPersec) / 1KB, 1)
-        
-        $cleanName = ($p.Name -split '#')[0]
-        
-        $gpuTag = "iGPU / Idle"
-        if ($nvidiaPids -contains $pidNum) {
-            $gpuTag = "NVIDIA dGPU [AWAKE]"
-        }
+function Get-FastProcessTable {
+    param([string]$Sort = "CPU")
 
-        # Power Impact heuristic
-        $impact = "Very Low"
-        if ($gpuTag -match "NVIDIA") {
-            $impact = "HIGH (dGPU Active)"
-        } elseif ($cpuPct -gt 15 -or $ramMB -gt 1500 -or $diskKBs -gt 5000) {
-            $impact = "HIGH"
-        } elseif ($cpuPct -gt 5 -or $ramMB -gt 500 -or $diskKBs -gt 1000) {
-            $impact = "Moderate"
-        }
+    # Fast process snapshot
+    $procs = [System.Diagnostics.Process]::GetProcesses()
+    $rows = @()
 
-        [PSCustomObject]@{
-            ProcessName = $cleanName
-            PID         = $pidNum
-            'CPU(%)'    = $cpuPct
-            'RAM(MB)'   = $ramMB
-            'RAM(%)'    = $ramPct
-            'Disk(KB/s)'= $diskKBs
-            'GPU Engine'= $gpuTag
-            'Power Tier'= $impact
-        }
+    foreach ($p in $procs) {
+        $pidNum = $p.Id
+        if ($pidNum -le 4) { continue }
+
+        try {
+            $name = $p.ProcessName
+            $memMb = [math]::Round($p.WorkingSet64 / 1MB, 1)
+            $memPct = [math]::Round(($memMb / $totalRamMB) * 100, 1)
+            
+            # Approximate CPU from TotalProcessorTime
+            $cpuPct = 0.0
+            try {
+                $cpuSec = $p.TotalProcessorTime.TotalSeconds
+                # Relative indicator
+                $cpuPct = [math]::Round($cpuSec, 1)
+            } catch {}
+
+            # Resource status tier
+            $tier = "Normal"
+            if ($memMb -ge 1000 -or $name -match "chrome|edge|python|node|blender|unreal|game") {
+                $tier = "Elevated"
+            }
+            if ($memMb -ge 2000) {
+                $tier = "High"
+            }
+
+            $rows += [PSCustomObject]@{
+                PID       = $pidNum
+                Name      = $name
+                RAM_MB    = $memMb
+                RAM_Pct   = $memPct
+                CPUTime_s = $cpuPct
+                Status    = $tier
+            }
+        } catch {}
     }
 
-    # Filter to notable processes and sort by CPU then RAM
-    return $rows | Where-Object { $_.'CPU(%)' -gt 0 -or $_.'RAM(MB)' -gt 100 -or $_.'GPU Engine' -match "NVIDIA" } | Sort-Object @{Expression={$_.'GPU Engine' -match "NVIDIA"}; Descending=$true}, 'CPU(%)', 'RAM(MB)' -Descending | Select-Object -First 15
+    if ($Sort -eq "RAM") {
+        return $rows | Sort-Object RAM_MB -Descending | Select-Object -First 18
+    } else {
+        return $rows | Sort-Object CPUTime_s, RAM_MB -Descending | Select-Object -First 18
+    }
 }
 
 while ($true) {
     Clear-Host
-    Write-Host "==========================================================================================" -ForegroundColor Cyan
-    Write-Host "                  TASK MANAGER PROCESS POWER MONITOR & PROCESS KILLER                     " -ForegroundColor Yellow
-    Write-Host "==========================================================================================" -ForegroundColor Cyan
-    Write-Host " System Memory: $totalRamMB MB Total  |  Logical CPU Cores: $cpuCount" -ForegroundColor Gray
+    $w = 88
+    try {
+        $w = [Console]::WindowWidth - 1
+        if ($w -lt 80) { $w = 88 }
+    } catch { $w = 88 }
+
+    Write-Host ("=" * $w) -ForegroundColor Cyan
+    Write-Host (" " * [math]::Max(0, [math]::Floor(($w - 32) / 2)) + "PROCESS MANAGER & RESORUCE KILLER") -ForegroundColor Yellow
+    Write-Host ("=" * $w) -ForegroundColor Cyan
+    Write-Host " Total RAM: $totalRamMB MB  |  Logical Threads: $cpuCount  |  Sort: $sortMode" -ForegroundColor Gray
+
+    if ($statusMsg) {
+        Write-Host " [NOTICE] $statusMsg" -ForegroundColor Yellow
+        $statusMsg = ""
+    }
     Write-Host ""
 
-    $table = Get-ProcessTable
-    $table | Format-Table -Property ProcessName, PID, 'CPU(%)', 'RAM(MB)', 'RAM(%)', 'Disk(KB/s)', 'GPU Engine', 'Power Tier' -AutoSize | Out-String | Write-Host -ForegroundColor White
-
-    Write-Host "------------------------------------------------------------------------------------------" -ForegroundColor Cyan
-    Write-Host " Commands:" -ForegroundColor Yellow
-    Write-Host "   - Type a PID number and press Enter to KILL that process instantly." -ForegroundColor Red
-    Write-Host "   - Press [Enter] without typing anything to REFRESH the list." -ForegroundColor White
-    Write-Host "   - Type '0' or 'q' and press Enter to RETURN to the main menu." -ForegroundColor Gray
-    Write-Host "------------------------------------------------------------------------------------------" -ForegroundColor Cyan
+    $table = Get-FastProcessTable -Sort $sortMode
     
-    $inputChoice = Read-Host " Enter PID to Kill or Action"
-    if ($inputChoice -eq '0' -or $inputChoice -eq 'q' -or $inputChoice -eq 'exit') {
+    # Formatted Header
+    $hdr = " {0,-7} | {1,-26} | {2,10} | {3,8} | {4,10} | {5,-10}" -f "PID", "APPLICATION NAME", "RAM (MB)", "RAM %", "CPU TIME", "STATUS"
+    Write-Host $hdr -ForegroundColor Cyan
+    Write-Host ("-" * [math]::Min($w, $hdr.Length + 2)) -ForegroundColor DarkGray
+
+    foreach ($r in $table) {
+        $tierCol = if ($r.Status -eq "High") { "Red" } elseif ($r.Status -eq "Elevated") { "Yellow" } else { "Green" }
+        $line = " {0,-7} | {1,-26} | {2,10} | {3,7}% | {4,9}s | {5,-10}" -f $r.PID, $r.Name, $r.RAM_MB, $r.RAM_Pct, $r.CPUTime_s, $r.Status
+        Write-Host $line -ForegroundColor $tierCol
+    }
+
+    Write-Host ""
+    Write-Host ("-" * $w) -ForegroundColor Cyan
+    Write-Host " Commands: [PID] Kill Process  |  [S] Toggle Sort ($sortMode)  |  [R / Enter] Refresh  |  [Q] Exit" -ForegroundColor Yellow
+    Write-Host ("=" * $w) -ForegroundColor Cyan
+
+    # Non-interactive check
+    try {
+        if ([Console]::IsInputRedirected) { return }
+    } catch { return }
+
+    $input = Read-Host " Enter Command or PID"
+    $input = $input.Trim()
+
+    if ($input -eq "" -or $input -eq "r" -or $input -eq "R") {
+        continue
+    }
+    if ($input -eq "q" -or $input -eq "Q" -or $input -eq "0" -or $input -eq "exit") {
         break
     }
-    if ([string]::IsNullOrWhiteSpace($inputChoice)) {
+    if ($input -eq "s" -or $input -eq "S") {
+        $sortMode = if ($sortMode -eq "CPU") { "RAM" } else { "CPU" }
+        $statusMsg = "Sorted list by $sortMode."
         continue
     }
 
-    $targetPid = $null
-    if ([int]::TryParse($inputChoice, [ref]$targetPid)) {
+    if ($input -match '^\d+$') {
+        $targetPid = [int]$input
         try {
-            $pToKill = Get-Process -Id $targetPid -ErrorAction Stop
-            $pName = $pToKill.ProcessName
-            Stop-Process -Id $targetPid -Force -ErrorAction Stop
-            Write-Host " [SUCCESS] Process '$pName' (PID $targetPid) was terminated!" -ForegroundColor Green
-            Start-Sleep -Seconds 2
+            $targetProc = Get-Process -Id $targetPid -ErrorAction Stop
+            $procName = $targetProc.ProcessName
+            $confirm = Read-Host " Confirm terminate $procName (PID: $targetPid)? [y/N]"
+            if ($confirm -match '^[yY]') {
+                $targetProc.Kill()
+                $statusMsg = "Successfully terminated $procName (PID: $targetPid)."
+            } else {
+                $statusMsg = "Kill operation cancelled."
+            }
         } catch {
-            Write-Host " [ERROR] Failed to kill process PID $targetPid: $($_.Exception.Message)" -ForegroundColor Red
-            Start-Sleep -Seconds 2
+            $statusMsg = "Failed to terminate PID $($targetPid): $_"
         }
     } else {
-        Write-Host " [!] Invalid PID entered." -ForegroundColor Yellow
-        Start-Sleep -Seconds 1
+        $statusMsg = "Invalid command. Enter a numeric PID or 'S' / 'Q'."
     }
 }

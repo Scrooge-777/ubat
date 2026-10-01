@@ -1,21 +1,21 @@
-# ubat - Universal Battery & Hardware Telemetry Tool
+# OMNI - System Hardware Telemetry & Optimizer Suite
 
-**ubat** is a modular, hardware-adaptive power diagnostic and optimization toolkit designed for **ANY Windows laptop** (HP OMEN, Lenovo Legion, ASUS ROG, Dell XPS, Acer Nitro, MSI, Surface, etc.).
+**OMNI** is a modular, hardware-adaptive telemetry and optimization toolkit designed for **ANY Windows PC or laptop** (HP OMEN, Lenovo Legion, ASUS ROG, Dell XPS, Acer Nitro, MSI, custom desktops, etc.).
 
 ---
 
-## Dynamic Laptop Branding & Partitioned Views
+## Dynamic Hardware Branding & Partitioned Views
 
-Whenever **ubat** runs on any PC, it automatically detects the exact brand and hardware, branding the monitor directly:
-* On HP OMEN: `HP OMEN GAMING LAPTOP 16 - BATTERY, CPU, RAM & POWER MONITOR`
-* On Lenovo: `LENOVO LEGION 5 - BATTERY, CPU, RAM & POWER MONITOR`
-* On ASUS: `ASUS ROG ZEPHYRUS - BATTERY, CPU, RAM & POWER MONITOR`
-* On Dell: `DELL XPS 15 - BATTERY, CPU, RAM & POWER MONITOR`
+Whenever **OMNI** runs on any PC, it automatically detects the exact brand and hardware:
+* On HP OMEN: `OMNI - SYSTEM HARDWARE TELEMETRY & OPTIMIZER (HP OMEN GAMING LAPTOP 16)`
+* On Lenovo: `OMNI - SYSTEM HARDWARE TELEMETRY & OPTIMIZER (LENOVO LEGION 5)`
+* On ASUS: `OMNI - SYSTEM HARDWARE TELEMETRY & OPTIMIZER (ASUS ROG ZEPHYRUS)`
+* On Dell: `OMNI - SYSTEM HARDWARE TELEMETRY & OPTIMIZER (DELL XPS 15)`
 
 ### High-Performance Terminal Interface
-**ubat** provides clean, high-performance terminal environments:
-1. **Live Terminal Monitor (Python & Rich Engine):** Instantaneous 25ms keystroke response, Task Manager-style color heatmap shading, multi-core visualizers, live GPU wattage, in-terminal session log viewer, and interactive PID killer.
-2. **Native Console Monitor (PowerShell):** Zero-dependency, flicker-free in-place console monitor with partitioned views.
+**OMNI** provides clean, high-performance terminal environments:
+1. **Live System Monitor (Python & Rich Engine):** Instantaneous 25ms keystroke response, btop-style dynamic micro-gauges, NVMe SSD partition meters, SMART wear degradation %, in-terminal session logs, and interactive PID killer.
+2. **Native Console Hub (PowerShell):** Zero-dependency, flicker-free in-place console monitor with nested sub-menus ("option inside an option") and comprehensive "all option in one option" views.
 
 ---
 
@@ -24,16 +24,18 @@ Whenever **ubat** runs on any PC, it automatically detects the exact brand and h
 ```text
 ubat/
 │
-├── ubat.bat                      # Master Executable Launcher (Runs live terminal monitor directly)
-├── Run-TUI.bat                   # 1-Click Launch: Python Live Terminal Monitor
+├── omni.bat                      # Master Executable Launcher (Runs OMNI live terminal monitor directly)
+├── ubat.bat                      # Backward-compatible CLI Launcher
+├── Run-TUI.bat                   # 1-Click Launch: Python Live System Monitor
 ├── Run-Live-Monitor.bat          # 1-Click Launch: Native PowerShell Console Monitor
-├── Optimize-Laptop.bat           # 1-Click Launch: Auto-profile hardware & optimize power plan
+├── Optimize-Laptop.bat           # 1-Click Launch: Auto-profile hardware & optimize power settings
 ├── Start-Test-Logger.bat         # 1-Click Launch: Start background drain test recorder
 ├── Stop-Test-Logger.bat          # 1-Click Launch: Stop background drain test recorder
 ├── Generate-Report.bat           # 1-Click Launch: Instant statistical analysis & summary
+├── Sync-Git.bat                  # 1-Click Git Synchronizer: Keeps local and GitHub in sync
 │
 ├── tui/                          # Flagship Terminal Interface (Python)
-│   └── ubat_tui.py               # Live monitor with Task Manager heatmaps, logs view & instant controls
+│   └── ubat_tui.py               # Live monitor with btop gauges, partition meters & instant controls
 │
 ├── core/                         # Core Hardware Profiling Engine
 │   ├── HardwareProfile.ps1       # Auto-detects OEM, CPU, GPUs, Battery Design & Live Metrics
@@ -42,8 +44,9 @@ ubat/
 ├── monitor/                      # Live Visualization Module
 │   └── LiveMonitor.ps1           # Dynamic branded UI with partitioned views
 │
-├── optimizer/                    # Power Plan & Hardware Tuning Module
-│   └── PowerOptimizer.ps1        # Safe CPU boost capping (99%), PCIe ASPM, & GPU tuning
+├── optimizer/                    # Hardware Optimization Engine
+│   ├── SsdOptimizer.ps1          # Volume ReTrim, Windows TRIM subsystem & cache wear reduction
+│   └── PowerOptimizer.ps1        # Safe CPU boost capping (99%), PCIe ASPM & thermal tuning
 │
 ├── logger/                       # Background Crash-Proof Recording Daemon
 │   ├── BackgroundLogger.ps1      # 30-second silent fail-safe logger (saves into logs/)
@@ -54,8 +57,8 @@ ubat/
 │   └── ViewLogs.ps1              # In-terminal session log viewer with File Explorer shortcut
 │
 ├── diagnostics/                  # Hardware Diagnostic Utilities
-│   ├── ProcessManager.ps1        # Task Manager-style parallel table & interactive PID killer
-│   ├── SsdDiagnostics.ps1        # NVMe SSD throughput, health status, & storage power
+│   ├── ProcessManager.ps1        # High-speed process table & interactive PID killer (<20ms)
+│   ├── SsdDiagnostics.ps1        # Partition tables, file systems, SMART wear % & throughput
 │   └── MeasureCpuDelta.ps1       # Process-level instantaneous CPU spike detector
 │
 ├── logs/                         # Dedicated Logs Directory (All data saved here)
@@ -70,35 +73,32 @@ ubat/
 
 ## How to Run
 
-### Option A: Master Interactive Menu (Full Arrow-Key Navigation)
-Run **`ubat --menu`** or run **`ubat.ps1`**:
+### Option A: Master Subsystem Menu ("Option inside an Option" & "All in One")
+Run **`omni --menu`** or **`ubat --menu`**:
 ```text
 ==========================================================================================
-                   UBAT - UNIVERSAL BATTERY OPTIMIZER (HP OMEN 16)
+             OMNI - SYSTEM HARDWARE TELEMETRY & OPTIMIZER (HP OMEN 16)
 ==========================================================================================
- Hardware: HP HP OMEN Gaming Laptop 16-am0xxx  |  CPU: Intel(R) Core(TM) i7-14650HX
+ Hardware: HP OMEN Gaming Laptop 16-am0xxx  |  CPU: Intel(R) Core(TM) i7-14650HX
 
- Choose a toolkit module to execute:
- (Use [↑ / ↓] Arrow Keys to navigate, [Enter] to select, or tap [0-9])
+ Choose a hardware subsystem to inspect:
+ (Use [Up / Down] Arrow Keys to navigate, [Enter] to select, or tap [0-6])
 
-  ► [1] Live Monitor             - Real-time battery, CPU, GPU & Task Manager heatmaps
-    [2] Battery Health           - Calibrated health %, wear level, cycle count & pack grade
-    [3] Battery Optimizer        - Tune power schemes, PCIe ASPM & safe CPU boost limits
-    [4] Process Manager          - Task Manager process table & interactive PID killer
-    [5] Storage Diagnostics      - NVMe SSD read/write speeds, drive health & APST draw
-    [6] Start Session Logger     - Record battery and power usage every 30s in background
-    [7] Stop Session Logger      - Terminate active background battery recording daemon
-    [8] Generate Test Report     - Statistical analysis, average drain Watts & runtime
-    [9] View Session Logs        - Show logs in terminal (with option to open folder)
-    [0] Exit                     - Exit ubat toolkit
+  > [1] Live System Monitor      - All-in-One real-time terminal telemetry engine
+    [2] Storage & SSD Hub        - Partitions, file systems, SMART wear & SSD TRIM optimizer
+    [3] Battery & Health Hub     - Calibrated health %, wear level, cycle count & battery tuner
+    [4] CPU & Memory Hub         - Multi-thread core loads, RAM volume & frequency limits
+    [5] Process Manager Hub      - Fast resource monitor & interactive PID killer
+    [6] Session Logs & Reports   - In-terminal session logs, analysis reports & folder access
+    [0] Exit                     - Exit OMNI toolkit
 
 ------------------------------------------------------------------------------------------
- Controls: [↑ / ↓] Move Selection  |  [Enter / Space] Select  |  [0-9] Quick Jump  |  [Q] Exit
+ Controls: [Up / Down] Move Selection  |  [Enter / Space] Select  |  [0-6] Quick Jump  |  [Q] Exit
 ```
 
 ### Option B: Direct Terminal Launch
-Typing **`ubat`** from any terminal opens the live monitor directly:
-- Arrow keys `[<- / ->]` or `[1-7]` cycle between All, Battery, CPU, RAM, GPU/SSD, Processes, and Logs views.
+Typing **`omni`** or **`ubat`** from any terminal opens the live monitor directly:
+- Arrow keys `[<- / ->]` or `[1-7]` cycle between All, Battery, CPU, RAM, Storage, Processes, and Logs views.
+- `[T]` triggers real-time volume TRIM & SSD optimization on all mounted partitions.
 - `[O]` opens the `logs` folder in Windows File Explorer.
 - `[K]` prompts for PID termination directly inside the terminal.
-- `[P]` toggles power schemes (HP OMEN Unbundle vs Balanced).

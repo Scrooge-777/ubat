@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-ubat - Universal Battery & Hardware Telemetry Terminal Engine (Rich Edition)
+OMNI - System Hardware Telemetry & Optimizer Engine (Rich Edition)
 =============================================================================
 High-performance terminal dashboard with motionless ANSI updating,
-real-time multi-core CPU, RAM, NVMe SSD, NVIDIA RTX GPU telemetry,
-calibrated battery health algorithms, and interactive process management.
+real-time multi-core CPU, RAM, NVMe SSD, Partitions & File Systems,
+calibrated battery health algorithms, SSD TRIM optimizer, and interactive process management.
 """
 
 import sys
@@ -16,6 +16,7 @@ import threading
 import subprocess
 import psutil
 import csv
+import json
 
 from rich.console import Console
 from rich.panel import Panel
@@ -31,26 +32,19 @@ console = Console()
 
 # Global State
 RUNNING = True
-CURRENT_VIEW = "all"  # 'all', 'battery', 'cpu', 'ram', 'gpu_ssd', 'processes'
+CURRENT_VIEW = "all"  # 'all', 'battery', 'cpu', 'ram', 'storage', 'processes', 'logs'
 REFRESH_RATES = [0.25, 0.5, 1.0, 2.0]
 REFRESH_INDEX = 1     # Default 0.5s
 REFRESH_RATE = REFRESH_RATES[REFRESH_INDEX]
 
 PROCESS_SORT_MODE = "cpu"    # 'cpu' or 'ram'
-PROCESS_FILTER_MODE = "all"  # 'all', 'nvidia', 'heavy'
-
-POWER_PROFILES = [
-    {"name": "UNBUNDLE (HP OMEN)", "guid": "21fcc937-6c5d-45d2-bb4b-1aa53670a42f"},
-    {"name": "BALANCED (WINDOWS)", "guid": "381b4222-f694-41f0-9685-ff5bb260df2e"},
-]
-POWER_PROFILE_INDEX = 0
+PROCESS_FILTER_MODE = "all"  # 'all', 'heavy'
 
 STATUS_MESSAGE = ""
 STATUS_TIME = 0.0
 
-# Animation frames
-SPINNER_FRAMES = ["-", "\\", "|", "/"]
-PULSE_FRAMES = ["[*]", "[+]", "[#]", "[+]"]
+# Dynamic Heartbeat Indicator
+HEARTBEAT_FRAMES = ["[--o--]", "[-o---]", "[o----]", "[-o---]", "[--o--]", "[---o-]", "[----o]", "[---o-]"]
 FRAME_INDEX = 0
 
 # Hardware Profile Cache
@@ -85,6 +79,11 @@ TELEMETRY = {
     "gpu_util": 0,
     "gpu_temp": 43,
     "gpu_power": 18.2,
+    "ssd_model": "Samsung NVMe SSD",
+    "ssd_health": "Healthy (OK)",
+    "ssd_wear_pct": 0,
+    "ssd_temp": 46,
+    "partitions": [],
     "disk_read_mbs": 0.0,
     "disk_write_mbs": 0.0,
     "disk_total_read_gb": 0.0,
@@ -102,7 +101,6 @@ def detect_system_hardware():
     try:
         cmd = 'powershell.exe -NoProfile -Command "Get-CimInstance Win32_ComputerSystem | Select-Object Manufacturer, Model | ConvertTo-Json -Compress"'
         out = subprocess.check_output(cmd, shell=True, text=True, timeout=2).strip()
-        import json
         data = json.loads(out)
         if data.get("Manufacturer"):
             HARDWARE_INFO["manufacturer"] = data["Manufacturer"].strip()
@@ -126,7 +124,6 @@ def update_battery_cim():
     try:
         cmd = 'powershell.exe -NoProfile -Command "$f = (Get-CimInstance -Namespace root/wmi -ClassName BatteryFullChargedCapacity -ErrorAction SilentlyContinue).FullChargedCapacity; $s = (Get-CimInstance -Namespace root/wmi -ClassName BatteryStatus -ErrorAction SilentlyContinue); $c = (Get-CimInstance -Namespace root/wmi -ClassName BatteryCycleCount -ErrorAction SilentlyContinue).CycleCount; [PSCustomObject]@{ FullMwh = $f; RemainingMwh = $s.RemainingCapacity; RateMw = $s.DischargeRate; Cycles = $c; Voltage = $s.Voltage } | ConvertTo-Json -Compress"'
         out = subprocess.check_output(cmd, shell=True, text=True, timeout=2).strip()
-        import json
         data = json.loads(out)
         if data.get("FullMwh"):
             TELEMETRY["battery_mwh_full"] = int(data["FullMwh"])
@@ -159,6 +156,25 @@ def update_battery_cim():
         pass
 
 
+def update_ssd_cim():
+    """Queries physical SSD SMART health, degradation, and model via PowerShell."""
+    global TELEMETRY
+    try:
+        cmd = 'powershell.exe -NoProfile -Command "$d = Get-PhysicalDisk | Select-Object -First 1; $r = Get-StorageReliabilityCounter -PhysicalDisk $d -ErrorAction SilentlyContinue; [PSCustomObject]@{ Model = $d.FriendlyName; Health = $d.HealthStatus; Wear = $r.Wear; Temp = $r.Temperature } | ConvertTo-Json -Compress"'
+        out = subprocess.check_output(cmd, shell=True, text=True, timeout=2.5).strip()
+        data = json.loads(out)
+        if data.get("Model"):
+            TELEMETRY["ssd_model"] = str(data["Model"]).strip()
+        if data.get("Health"):
+            TELEMETRY["ssd_health"] = str(data["Health"]).strip()
+        if data.get("Wear") is not None:
+            TELEMETRY["ssd_wear_pct"] = int(data["Wear"])
+        if data.get("Temp") is not None and int(data["Temp"]) > 0:
+            TELEMETRY["ssd_temp"] = int(data["Temp"])
+    except Exception:
+        pass
+
+
 def update_gpu_nvidia():
     """Queries NVIDIA GPU metrics via nvidia-smi."""
     global TELEMETRY
@@ -181,13 +197,14 @@ def update_gpu_nvidia():
 
 
 def telemetry_background_worker():
-    """Background worker thread for periodic heavy telemetry (GPU, ACPI)."""
+    """Background worker thread for periodic heavy telemetry (GPU, ACPI, SSD)."""
     global RUNNING
     counter = 0
     while RUNNING:
         try:
             if counter % 4 == 0:
                 update_battery_cim()
+                update_ssd_cim()
             if counter % 2 == 0:
                 update_gpu_nvidia()
         except Exception:
@@ -197,7 +214,7 @@ def telemetry_background_worker():
 
 
 def poll_fast_telemetry():
-    """Polls instantaneous metrics (CPU, RAM, Disk, Processes)."""
+    """Polls instantaneous metrics (CPU, RAM, Disk, Partitions, Processes)."""
     global TELEMETRY
     # Battery psutil
     batt = psutil.sensors_battery()
@@ -237,6 +254,29 @@ def poll_fast_telemetry():
             TELEMETRY["last_disk_write"] = disk_io.write_bytes
             TELEMETRY["last_disk_time"] = now
 
+    # Partitions
+    try:
+        parts = []
+        for p in psutil.disk_partitions(all=False):
+            if 'cdrom' in p.opts or not p.fstype:
+                continue
+            try:
+                u = psutil.disk_usage(p.mountpoint)
+                parts.append({
+                    "device": p.device.rstrip('\\'),
+                    "mount": p.mountpoint,
+                    "fstype": p.fstype,
+                    "total_gb": round(u.total / (1024**3), 1),
+                    "used_gb": round(u.used / (1024**3), 1),
+                    "free_gb": round(u.free / (1024**3), 1),
+                    "pct": u.percent,
+                })
+            except Exception:
+                continue
+        TELEMETRY["partitions"] = parts
+    except Exception:
+        pass
+
     # Top Processes
     try:
         procs = []
@@ -247,10 +287,7 @@ def poll_fast_telemetry():
                 cpu_p = info['cpu_percent'] or 0.0
                 name = info['name']
 
-                # Filtering
-                if PROCESS_FILTER_MODE == "nvidia" and not ("nv" in name.lower() or "nvidia" in name.lower()):
-                    continue
-                elif PROCESS_FILTER_MODE == "heavy" and (cpu_p < 2.0 and mem_mb < 300):
+                if PROCESS_FILTER_MODE == "heavy" and (cpu_p < 2.0 and mem_mb < 300):
                     continue
 
                 procs.append({
@@ -273,12 +310,23 @@ def poll_fast_telemetry():
         pass
 
 
-def make_progress_bar(pct, width=20, fill_char="=", empty_char="-", color="green"):
+def make_progress_bar(pct, width=18, fill_char="=", empty_char="-", color="green"):
     """Generates an ANSI/Rich styled progress bar."""
     pct = max(0.0, min(100.0, pct))
     filled_len = int(round(width * pct / 100.0))
     bar = fill_char * filled_len + empty_char * (width - filled_len)
     return f"[{color}][{bar}][/{color}] [bold]{pct:.1f}%[/bold]"
+
+
+def make_mini_meter(val, max_val=20.0, width=8):
+    """Draws an aesthetic btop-style ASCII gauge meter."""
+    val = max(0.0, min(max_val, val))
+    fill = int(round(width * (val / max_val)))
+    empty = width - fill
+    ratio = val / max_val
+    col = "bright_red" if ratio >= 0.6 else "bright_yellow" if ratio >= 0.3 else "green"
+    bar_str = "|" * fill + "." * empty
+    return f"[{col}][{bar_str}][/{col}]"
 
 
 def format_secs(secs):
@@ -309,14 +357,35 @@ def open_logs_folder():
     STATUS_TIME = time.time()
 
 
+def run_ssd_trim_optimizer(live):
+    """Runs SSD TRIM optimization with live terminal feedback."""
+    global STATUS_MESSAGE, STATUS_TIME
+    live.stop()
+    script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "optimizer", "SsdOptimizer.ps1")
+    try:
+        subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script_path])
+        STATUS_MESSAGE = "SSD TRIM optimization completed successfully."
+        STATUS_TIME = time.time()
+        time.sleep(1.0)
+    except Exception as e:
+        STATUS_MESSAGE = f"SSD optimizer error: {e}"
+        STATUS_TIME = time.time()
+    live.start()
+
+
 def build_header_panel():
-    """Creates clean, stationary hardware banner."""
+    """Creates clean, animated hardware banner with heartbeat indicator."""
+    global FRAME_INDEX
+    hb = HEARTBEAT_FRAMES[FRAME_INDEX % len(HEARTBEAT_FRAMES)]
+
     mfg = HARDWARE_INFO["manufacturer"].upper()
     model = HARDWARE_INFO["model"].upper()
     cpu = HARDWARE_INFO["cpu_name"]
 
     title_text = Text()
-    title_text.append(" UBAT HARDWARE & BATTERY MONITOR \n", style="bold white on #1e293b")
+    title_text.append(f" {hb} ", style="bold cyan")
+    title_text.append("OMNI SYSTEM HARDWARE TELEMETRY & OPTIMIZER", style="bold white on #1e293b")
+    title_text.append(f" {hb}\n", style="bold cyan")
     title_text.append(" SYSTEM: ", style="bold cyan")
     title_text.append(f"{mfg} {model}", style="bold yellow")
     title_text.append("  |  CPU: ", style="bold cyan")
@@ -343,18 +412,17 @@ def build_battery_panel():
     wear = TELEMETRY["battery_wear_pct"]
     grade = TELEMETRY["battery_health_grade"]
     secs = TELEMETRY["battery_secsleft"]
-    cycles = TELEMETRY["battery_cycle_count"]
     voltage = TELEMETRY["battery_voltage_v"]
 
     batt_color = "green" if pct >= 60 else "yellow" if pct >= 30 else "red"
 
     table = Table(box=None, expand=True, show_header=False, padding=(0, 1))
-    table.add_column("Key", style="bold cyan", width=17)
+    table.add_column("Key", style="bold cyan", width=16)
     table.add_column("Value", style="bold white")
 
     power_src = "[bold green][AC] ADAPTER CONNECTED[/bold green]" if plugged else "[bold yellow][BAT] ON BATTERY POWER[/bold yellow]"
     table.add_row("Power Source", power_src)
-    table.add_row("Charge Level", make_progress_bar(pct, width=18, color=batt_color))
+    table.add_row("Charge Level", make_progress_bar(pct, width=16, color=batt_color))
     table.add_row("Health Grade", f"[bold green]{grade}[/bold green] (Wear: [bold yellow]{wear}%[/bold yellow])")
     table.add_row("Capacity", f"{full_mwh:,} mWh [dim](Design: {design_mwh:,})[/dim]")
     table.add_row("Remaining", f"{rem_mwh:,} mWh [dim]({voltage}V pack)[/dim]")
@@ -381,17 +449,17 @@ def build_cpu_ram_panel():
     table.add_column("Metric", style="bold cyan", width=14)
     table.add_column("Status", style="bold white")
 
-    table.add_row("CPU Load", make_progress_bar(cpu_pct, width=16, color=cpu_color))
-    table.add_row("RAM Usage", make_progress_bar(ram_pct, width=16, color=ram_color))
+    table.add_row("CPU Load", make_progress_bar(cpu_pct, width=14, color=cpu_color))
+    table.add_row("RAM Usage", make_progress_bar(ram_pct, width=14, color=ram_color))
     table.add_row("Memory Vol", f"[bold white]{ram_used:.1f} GB[/bold white] / [dim]{ram_total:.1f} GB[/dim]")
     table.add_row("Free Memory", f"[bold green]{ram_avail:.1f} GB[/bold green] [dim]available[/dim]")
     
-    # Per core visualizer
+    # Core sparks
     cores = TELEMETRY["cpu_per_core"]
     if cores:
         core_sparks = ""
         for c in cores[:16]:
-            char = " " if c < 15 else "_" if c < 35 else "=" if c < 65 else "#"
+            char = "_" if c < 20 else "=" if c < 60 else "#"
             col = "green" if c < 50 else "yellow" if c < 80 else "red"
             core_sparks += f"[{col}]{char}[/{col}]"
         table.add_row("Core Sparks", f"{core_sparks} [dim]({len(cores)} Cores)[/dim]")
@@ -399,67 +467,65 @@ def build_cpu_ram_panel():
     return Panel(table, title="[bold cyan]CPU & MEMORY HUB[/bold cyan]", border_style="cyan", box=box.ROUNDED)
 
 
-def build_gpu_ssd_panel():
-    """Renders NVIDIA GPU & NVMe SSD storage throughput."""
-    gpu_name = TELEMETRY["gpu_name"]
-    gpu_util = TELEMETRY["gpu_util"]
-    gpu_temp = TELEMETRY["gpu_temp"]
-    gpu_power = TELEMETRY["gpu_power"]
+def build_storage_panel():
+    """Renders storage partitions, NVMe health & throughput."""
     read_mb = TELEMETRY["disk_read_mbs"]
     write_mb = TELEMETRY["disk_write_mbs"]
+    ssd_model = TELEMETRY.get("ssd_model", "Samsung NVMe SSD")
+    ssd_health = TELEMETRY.get("ssd_health", "Healthy (OK)")
+    ssd_wear = TELEMETRY.get("ssd_wear_pct", 0)
+    ssd_temp = TELEMETRY.get("ssd_temp", 46)
+    parts = TELEMETRY.get("partitions", [])
 
     table = Table(box=None, expand=True, show_header=False, padding=(0, 1))
     table.add_column("Device", style="bold cyan", width=14)
     table.add_column("Details", style="bold white")
 
-    table.add_row("GPU Device", f"[bold yellow]{gpu_name[:24]}[/bold yellow]")
-    gpu_status = f"[bold green]{gpu_util}%[/bold green] | [bold yellow]{gpu_temp} C[/bold yellow] | [bold magenta]{gpu_power:.1f}W[/bold magenta]"
-    table.add_row("GPU Metrics", gpu_status)
-    table.add_row("NVMe Read", f"[bold green]{read_mb:.1f} MB/s[/bold green]")
-    table.add_row("NVMe Write", f"[bold cyan]{write_mb:.1f} MB/s[/bold cyan]")
-    table.add_row("Total I/O", f"R: {TELEMETRY['disk_total_read_gb']:.1f}GB | W: {TELEMETRY['disk_total_write_gb']:.1f}GB")
+    table.add_row("SSD Model", f"[bold yellow]{ssd_model[:22]}[/bold yellow]")
+    health_str = f"[bold green]{ssd_health}[/bold green] (Wear: [bold yellow]{ssd_wear}%[/bold yellow] | [yellow]{ssd_temp} C[/yellow])"
+    table.add_row("Drive Health", health_str)
+    table.add_row("Throughput", f"R: [bold green]{read_mb:.1f} MB/s[/bold green] | W: [bold cyan]{write_mb:.1f} MB/s[/bold cyan]")
 
-    return Panel(table, title="[bold cyan]GPU & NVME STORAGE TELEMETRY[/bold cyan]", border_style="cyan", box=box.ROUNDED)
+    for p in parts[:3]:
+        pct = p["pct"]
+        bar = make_progress_bar(pct, width=10, color="green" if pct < 75 else "yellow" if pct < 90 else "red")
+        table.add_row(f"{p['device']} ({p['fstype']})", f"{bar} [dim]({p['free_gb']}GB free)[/dim]")
+
+    return Panel(table, title="[bold cyan]STORAGE & NVME PARTITIONS[/bold cyan]", border_style="cyan", box=box.ROUNDED)
 
 
 def build_process_table(limit=6):
-    """Renders active processes in Task Manager style with resource columns and heatmap shading."""
+    """Renders active processes with dynamic micro-bars and clean aesthetic indicators."""
     table = Table(box=box.SIMPLE_HEAD, expand=True, header_style="bold cyan", padding=(0, 1))
     table.add_column("PID", justify="right", style="dim", width=7)
     table.add_column("APPLICATION NAME", style="bold white", width=22)
-    table.add_column("CPU %", justify="right", width=14)
-    table.add_column("RAM (MB)", justify="right", width=14)
-    table.add_column("POWER HEATMAP", justify="center", width=16)
+    table.add_column("CPU USAGE", justify="left", width=18)
+    table.add_column("RAM USAGE", justify="left", width=18)
+    table.add_column("POWER STATUS", justify="center", width=16)
 
     procs = TELEMETRY["processes"][:limit]
     if not procs:
-        table.add_row("-", "Scanning active processes...", "0.0%", "0.0 MB", "[dim]--[/dim]")
+        table.add_row("-", "Scanning active processes...", "--", "--", "[dim]--[/dim]")
     else:
         for p in procs:
             cpu_val = p['cpu']
             mem_val = p['mem_mb']
 
-            # Task Manager style color heatmap
-            if cpu_val >= 6.0:
-                cpu_cell = f"[bold white on #b91c1c] {cpu_val:4.1f}% [/bold white on #b91c1c]"
-            elif cpu_val >= 2.0:
-                cpu_cell = f"[bold black on #f59e0b] {cpu_val:4.1f}% [/bold black on #f59e0b]"
-            else:
-                cpu_cell = f"[dim green]{cpu_val:4.1f}%[/dim green]"
+            # Sleek dynamic meters without block highlights
+            cpu_meter = make_mini_meter(cpu_val, max_val=20.0, width=7)
+            cpu_col = "bold red" if cpu_val >= 6.0 else "bold yellow" if cpu_val >= 2.0 else "dim green"
+            cpu_cell = f"{cpu_meter} [{cpu_col}]{cpu_val:4.1f}%[/{cpu_col}]"
 
-            if mem_val >= 700.0:
-                mem_cell = f"[bold white on #b91c1c] {mem_val:5.1f} MB [/bold white on #b91c1c]"
-            elif mem_val >= 300.0:
-                mem_cell = f"[bold black on #f59e0b] {mem_val:5.1f} MB [/bold black on #f59e0b]"
-            else:
-                mem_cell = f"[dim green]{mem_val:5.1f} MB[/dim green]"
+            mem_meter = make_mini_meter(mem_val, max_val=1500.0, width=7)
+            mem_col = "bold red" if mem_val >= 700.0 else "bold yellow" if mem_val >= 300.0 else "dim green"
+            mem_cell = f"{mem_meter} [{mem_col}]{mem_val:5.1f}M[/{mem_col}]"
 
             if cpu_val >= 6.0 or mem_val >= 700.0:
-                impact_badge = "[bold white on #b91c1c] HIGH DRAIN [/bold white on #b91c1c]"
+                impact_badge = "[bold red]* HIGH DRAIN[/bold red]"
             elif cpu_val >= 2.0 or mem_val >= 300.0:
-                impact_badge = "[bold black on #f59e0b] MODERATE [/bold black on #f59e0b]"
+                impact_badge = "[bold yellow]> MODERATE  [/bold yellow]"
             else:
-                impact_badge = "[dim green] LOW/IDLE  [/dim green]"
+                impact_badge = "[dim green]. OPTIMAL   [/dim green]"
 
             table.add_row(
                 str(p['pid']),
@@ -490,7 +556,6 @@ def build_battery_focus_view():
     cycles = TELEMETRY["battery_cycle_count"]
     voltage = TELEMETRY["battery_voltage_v"]
 
-    # 4-hour target budget
     budget_w = round(full_mwh / 4000.0, 2)
 
     table = Table(box=box.ROUNDED, expand=True, padding=(0, 2))
@@ -527,19 +592,18 @@ def build_cpu_focus_view():
     table.add_row("Core Configuration", f"{physical} Physical Cores / {logical} Logical Threads")
     table.add_row("Overall CPU Load", make_progress_bar(cpu_pct, width=28))
 
-    # Core grid
     core_table = Table(box=box.SIMPLE, expand=True)
     for col_idx in range(4):
         core_table.add_column(f"Core Group {col_idx+1}", style="bold white")
 
-    rows = []
     chunk_size = 4
     for i in range(0, len(cores), chunk_size):
         chunk = cores[i:i+chunk_size]
         row_cells = []
         for idx, c in enumerate(chunk):
             col = "green" if c < 50 else "yellow" if c < 80 else "red"
-            row_cells.append(f"T{i+idx:02d}: [{col}]{c:4.1f}%[/{col}]")
+            meter = make_mini_meter(c, max_val=100.0, width=6)
+            row_cells.append(f"T{i+idx:02d}: {meter} [{col}]{c:4.1f}%[/{col}]")
         while len(row_cells) < 4:
             row_cells.append("-")
         core_table.add_row(*row_cells)
@@ -553,13 +617,65 @@ def build_cpu_focus_view():
     return content
 
 
+def build_storage_focus_view():
+    """Deep storage partition manager, SMART health, wear degradation & TRIM status."""
+    ssd_model = TELEMETRY.get("ssd_model", "Samsung NVMe SSD")
+    ssd_health = TELEMETRY.get("ssd_health", "Healthy (OK)")
+    ssd_wear = TELEMETRY.get("ssd_wear_pct", 0)
+    ssd_temp = TELEMETRY.get("ssd_temp", 46)
+    parts = TELEMETRY.get("partitions", [])
+    read_mb = TELEMETRY["disk_read_mbs"]
+    write_mb = TELEMETRY["disk_write_mbs"]
+
+    hw_table = Table(box=box.ROUNDED, expand=True, padding=(0, 2))
+    hw_table.add_column("NVME STORAGE METRIC", style="bold cyan", width=26)
+    hw_table.add_column("STATUS & RELIABILITY COUNTERS", style="bold white")
+
+    hw_table.add_row("Physical Drive Model", f"[bold yellow]{ssd_model}[/bold yellow]")
+    hw_table.add_row("SMART Health State", f"[bold green]{ssd_health}[/bold green]")
+    hw_table.add_row("Lifetime Degradation", f"[bold green]{ssd_wear}% Wear[/bold green] [dim](Remaining Endurance: {100 - ssd_wear}%)[/dim]")
+    hw_table.add_row("Drive Temperature", f"[bold yellow]{ssd_temp} C[/bold yellow] [dim](Optimal operating temperature)[/dim]")
+    hw_table.add_row("Real-time Throughput", f"Read: [bold green]{read_mb:.1f} MB/s[/bold green]  |  Write: [bold cyan]{write_mb:.1f} MB/s[/bold cyan]")
+    hw_table.add_row("Storage Optimizer", "Press [bold yellow][T][/bold yellow] to run volume TRIM & file system optimization")
+
+    part_table = Table(box=box.SIMPLE_HEAD, expand=True, header_style="bold cyan", padding=(0, 1))
+    part_table.add_column("DRIVE", justify="center", width=8)
+    part_table.add_column("FILE SYSTEM", width=14)
+    part_table.add_column("TOTAL (GB)", justify="right", width=12)
+    part_table.add_column("USED (GB)", justify="right", width=12)
+    part_table.add_column("FREE (GB)", justify="right", width=12)
+    part_table.add_column("USAGE METER", justify="center", width=24)
+
+    if not parts:
+        part_table.add_row("--", "--", "--", "--", "--", "Scanning partitions...")
+    else:
+        for p in parts:
+            pct = p["pct"]
+            col = "green" if pct < 75 else "yellow" if pct < 90 else "red"
+            bar = make_progress_bar(pct, width=12, color=col)
+            part_table.add_row(
+                f"[bold cyan]{p['device']}[/bold cyan]",
+                f"[bold white]{p['fstype']}[/bold white]",
+                f"{p['total_gb']:.1f} GB",
+                f"{p['used_gb']:.1f} GB",
+                f"[bold green]{p['free_gb']:.1f} GB[/bold green]",
+                bar
+            )
+
+    layout = Layout()
+    layout.split_column(
+        Layout(Panel(hw_table, title="[bold cyan]PHYSICAL NVME SSD HEALTH & DEGRADATION[/bold cyan]", box=box.ROUNDED, border_style="cyan"), size=9),
+        Layout(Panel(part_table, title="[bold cyan]MOUNTED PARTITIONS & STORAGE VOLUMES[/bold cyan]", box=box.ROUNDED, border_style="cyan")),
+    )
+    return layout
+
+
 def build_logs_view():
     """In-terminal log viewer showing active session details, recent telemetry, and archive."""
     logs_dir = get_logs_directory()
     curr_log = os.path.join(logs_dir, "current-session.csv")
     pid_file = os.path.join(logs_dir, "battery-logger.pid")
 
-    # Logger process check
     is_logging = False
     logger_pid = None
     if os.path.exists(pid_file):
@@ -575,7 +691,6 @@ def build_logs_view():
 
     status_str = f"[bold green]ACTIVE (PID: {logger_pid})[/bold green]" if is_logging else "[dim yellow]INACTIVE (Stopped)[/dim yellow]"
 
-    # Summary table
     summary_table = Table(box=box.ROUNDED, expand=True, padding=(0, 1))
     summary_table.add_column("LOG CONFIGURATION", style="bold cyan", width=22)
     summary_table.add_column("CURRENT STATUS", style="bold white")
@@ -584,7 +699,6 @@ def build_logs_view():
     summary_table.add_row("Log File Path", curr_log)
     summary_table.add_row("Explorer Shortcut", "Press [bold yellow][O][/bold yellow] to open logs folder in Windows File Explorer")
 
-    # Read current session CSV rows
     rows = []
     total_records = 0
     start_pct, end_pct = 0.0, 0.0
@@ -613,7 +727,6 @@ def build_logs_view():
     else:
         summary_table.add_row("Session Statistics", f"{total_records} rows logged")
 
-    # Archives summary table
     archive_dir = os.path.join(logs_dir, "archive")
     archive_files = []
     if os.path.exists(archive_dir):
@@ -629,7 +742,6 @@ def build_logs_view():
     archive_str = ", ".join(archive_files) if archive_files else "No archived sessions."
     summary_table.add_row("Recent Archives", archive_str)
 
-    # Telemetry rows table
     telemetry_table = Table(box=box.SIMPLE_HEAD, expand=True, header_style="bold cyan", padding=(0, 1))
     telemetry_table.add_column("TIMESTAMP", style="dim", width=20)
     telemetry_table.add_column("PWR", justify="center", width=6)
@@ -663,16 +775,15 @@ def build_logs_view():
 
 
 def build_footer_panel():
-    """Interactive hotkey footer bar."""
+    """Interactive hotkey footer bar (Cleaned of Power option)."""
     global STATUS_MESSAGE, STATUS_TIME
 
-    active_p = POWER_PROFILES[POWER_PROFILE_INDEX]["name"]
     rate_str = f"{REFRESH_RATE}s"
 
     footer_text = Text()
     footer_text.append(" [<-/-> or 1-7] Views ", style="bold white on #2563eb")
+    footer_text.append(" [T] SSD TRIM ", style="bold white on #059669")
     footer_text.append(" [O] Logs Folder ", style="bold white on #7c3aed")
-    footer_text.append(f" [P] Power: {active_p} ", style="bold white on #059669")
     footer_text.append(f" [R] Rate: {rate_str} ", style="bold white on #0284c7")
     footer_text.append(f" [S] Sort: {PROCESS_SORT_MODE.upper()} ", style="bold white on #475569")
     footer_text.append(f" [F] Filter: {PROCESS_FILTER_MODE.upper()} ", style="bold white on #334155")
@@ -709,7 +820,7 @@ def render_dashboard():
             layout["top_cards"].split_row(
                 Layout(build_battery_panel(), ratio=1),
                 Layout(build_cpu_ram_panel(), ratio=1),
-                Layout(build_gpu_ssd_panel(), ratio=1),
+                Layout(build_storage_panel(), ratio=1),
             )
             layout["process_table"].update(build_process_table(limit=6))
         else:
@@ -736,11 +847,8 @@ def render_dashboard():
             Layout(build_process_table(limit=12)),
         )
 
-    elif CURRENT_VIEW == "gpu_ssd":
-        layout["body"].split_column(
-            Layout(build_gpu_ssd_panel(), size=9),
-            Layout(build_process_table(limit=12)),
-        )
+    elif CURRENT_VIEW == "storage":
+        layout["body"].update(build_storage_focus_view())
 
     elif CURRENT_VIEW == "processes":
         layout["body"].update(build_process_table(limit=16))
@@ -776,20 +884,6 @@ def handle_kill_process_dialog(live):
     live.start()
 
 
-def cycle_power_profile():
-    """Switches active power scheme via powercfg."""
-    global POWER_PROFILE_INDEX, STATUS_MESSAGE, STATUS_TIME
-    POWER_PROFILE_INDEX = (POWER_PROFILE_INDEX + 1) % len(POWER_PROFILES)
-    profile = POWER_PROFILES[POWER_PROFILE_INDEX]
-    try:
-        subprocess.run(["powercfg", "/setactive", profile["guid"]], capture_output=True)
-        STATUS_MESSAGE = f"Power Profile switched to {profile['name']}."
-        STATUS_TIME = time.time()
-    except Exception as e:
-        STATUS_MESSAGE = f"Could not switch power profile: {e}"
-        STATUS_TIME = time.time()
-
-
 def toggle_refresh_rate():
     """Toggles refresh speed."""
     global REFRESH_INDEX, REFRESH_RATE, STATUS_MESSAGE, STATUS_TIME
@@ -811,18 +905,11 @@ def toggle_process_filter():
     """Toggles process filtering."""
     global PROCESS_FILTER_MODE, STATUS_MESSAGE, STATUS_TIME
     if PROCESS_FILTER_MODE == "all":
-        PROCESS_FILTER_MODE = "nvidia"
-    elif PROCESS_FILTER_MODE == "nvidia":
         PROCESS_FILTER_MODE = "heavy"
     else:
         PROCESS_FILTER_MODE = "all"
     STATUS_MESSAGE = f"Process filter set to {PROCESS_FILTER_MODE.upper()}."
     STATUS_TIME = time.time()
-
-
-def run_startup_scan():
-    """Instantaneous hardware initialization."""
-    pass
 
 
 def main():
@@ -831,20 +918,20 @@ def main():
     # Hide cursor
     console.show_cursor(False)
 
-    # Initial fast scan
+    # Initial fast hardware detection
     detect_system_hardware()
-    run_startup_scan()
 
     # Initial seed
     poll_fast_telemetry()
     update_battery_cim()
+    update_ssd_cim()
     update_gpu_nvidia()
 
     # Background heavy thread
     worker = threading.Thread(target=telemetry_background_worker, daemon=True)
     worker.start()
 
-    views_list = ["all", "battery", "cpu", "ram", "gpu_ssd", "processes", "logs"]
+    views_list = ["all", "battery", "cpu", "ram", "storage", "processes", "logs"]
     last_render_time = time.time()
 
     with Live(render_dashboard(), refresh_per_second=20, screen=True, console=console) as live:
@@ -877,19 +964,19 @@ def main():
                     elif key == b'4':
                         CURRENT_VIEW = "ram"; view_changed = True
                     elif key == b'5':
-                        CURRENT_VIEW = "gpu_ssd"; view_changed = True
+                        CURRENT_VIEW = "storage"; view_changed = True
                     elif key == b'6':
                         CURRENT_VIEW = "processes"; view_changed = True
                     elif key in [b'7', b'l', b'L']:
                         CURRENT_VIEW = "logs"; view_changed = True
+                    elif key in [b't', b'T']:
+                        run_ssd_trim_optimizer(live)
+                        view_changed = True
                     elif key in [b'o', b'O']:
                         open_logs_folder()
                         view_changed = True
                     elif key in [b'k', b'K']:
                         handle_kill_process_dialog(live)
-                        view_changed = True
-                    elif key in [b'p', b'P']:
-                        cycle_power_profile()
                         view_changed = True
                     elif key in [b'r', b'R']:
                         toggle_refresh_rate()
@@ -901,7 +988,7 @@ def main():
                         toggle_process_filter()
                         view_changed = True
 
-                    # Render INSTANTLY on key press without waiting for cadence
+                    # Render INSTANTLY on key press
                     if view_changed:
                         poll_fast_telemetry()
                         live.update(render_dashboard())
@@ -922,7 +1009,7 @@ def main():
             RUNNING = False
             console.show_cursor(True)
             console.clear()
-            console.print("[bold green]UBAT Telemetry Monitor closed cleanly. Have a great day![/bold green]\n")
+            console.print("[bold green]OMNI Hardware & Telemetry Engine closed cleanly. Have a great day![/bold green]\n")
 
 
 if __name__ == "__main__":

@@ -1,36 +1,90 @@
 <#
 .SYNOPSIS
-    NVMe SSD Health, Speed & Power Diagnostics
+    NVMe SSD Health, Partition Layout & Storage Diagnostics
 .DESCRIPTION
-    Analyzes physical SSD drives, health status, real-time read/write throughput,
-    disk activity time %, and estimated storage power consumption.
+    Inspects physical NVMe SSD drives, SMART reliability counters (Wear Degradation %, Temperature),
+    volume partitions, file systems, disk usage percentages, and real-time read/write speeds.
 #>
 
+$ScriptDir = Split-Path $PSScriptRoot -Parent
+$w = 88
+try {
+    $w = [Console]::WindowWidth - 1
+    if ($w -lt 80) { $w = 88 }
+} catch { $w = 88 }
+
 Clear-Host
-Write-Host "================================================================================" -ForegroundColor Cyan
-Write-Host "                NVMe SSD HEALTH, PERFORMANCE & POWER DIAGNOSTICS                " -ForegroundColor Yellow
-Write-Host "================================================================================" -ForegroundColor Cyan
+Write-Host ("=" * $w) -ForegroundColor Cyan
+Write-Host (" " * [math]::Max(0, [math]::Floor(($w - 36) / 2)) + "STORAGE & NVME PARTITION DIAGNOSTICS") -ForegroundColor Yellow
+Write-Host ("=" * $w) -ForegroundColor Cyan
 Write-Host ""
 
-# 1. Physical Disk Inspection
-Write-Host " [1. DETECTED STORAGE DRIVES]" -ForegroundColor Green
+# 1. Physical SSD & SMART Wear Info
+Write-Host " [1. PHYSICAL DRIVE HEALTH & SMART WEAR]" -ForegroundColor Cyan
 $disks = Get-PhysicalDisk -ErrorAction SilentlyContinue
 foreach ($d in $disks) {
     $sizeGB = [math]::Round($d.Size / 1GB, 1)
-    Write-Host "   Device Model:        $($d.FriendlyName)" -ForegroundColor White
-    Write-Host "   Media Type:          $($d.MediaType)" -ForegroundColor White
-    Write-Host "   Total Capacity:      $sizeGB GB" -ForegroundColor White
-    Write-Host "   Health Status:       $($d.HealthStatus) (Operational: $($d.OperationalStatus))" -ForegroundColor $(if ($d.HealthStatus -eq 'Healthy') { 'Green' } else { 'Red' })
-    Write-Host "   Bus Type:            $($d.BusType)" -ForegroundColor Gray
+    $media = if ($d.MediaType) { $d.MediaType } else { "SSD" }
+    $bus = if ($d.BusType) { $d.BusType } else { "NVMe" }
+    $health = $d.HealthStatus
+    $status = $d.OperationalStatus
+    
+    $temp = "--"
+    $wear = 0
+    try {
+        $rel = Get-StorageReliabilityCounter -PhysicalDisk $d -ErrorAction SilentlyContinue
+        if ($rel) {
+            if ($rel.Temperature) { $temp = "$($rel.Temperature) C" }
+            if ($rel.Wear -ne $null) { $wear = $rel.Wear }
+        }
+    } catch {}
+
+    $healthCol = if ($health -eq "Healthy") { "Green" } else { "Red" }
+    Write-Host "   Device Model:    $($d.FriendlyName)" -ForegroundColor White
+    Write-Host "   Type / Bus:      $media / $bus  ($sizeGB GB Total)" -ForegroundColor Gray
+    Write-Host "   Health Status:   $health (Operational: $status)" -ForegroundColor $healthCol
+    Write-Host "   Wear Level:      $wear% Degradation (Remaining Life: $(100 - $wear)%)" -ForegroundColor $(if ($wear -le 10) { 'Green' } else { 'Yellow' })
+    Write-Host "   Drive Temp:      $temp" -ForegroundColor $(if ($temp -match '^[0-4]') { 'Green' } else { 'Yellow' })
 }
-
 Write-Host ""
-# 2. Real-Time NVMe Performance & Throughput
-Write-Host " [2. REAL-TIME THROUGHPUT & ACTIVITY (1-SECOND SAMPLE)]" -ForegroundColor Green
 
-$readSpeedMB = 0
-$writeSpeedMB = 0
-$activeTimePct = 0
+# 2. Partition & File System Breakdown
+Write-Host " [2. DRIVE PARTITIONS & FILE SYSTEMS]" -ForegroundColor Cyan
+$vols = Get-Volume -ErrorAction SilentlyContinue | Where-Object { $_.DriveType -eq 'Fixed' -and $_.DriveLetter }
+
+$hdr = " {0,-5} | {1,-16} | {2,-8} | {3,9} | {4,9} | {5,8} | {6,-16}" -f "DRIVE", "LABEL", "FS", "TOTAL(GB)", "FREE(GB)", "USED %", "VOLUME USAGE"
+Write-Host $hdr -ForegroundColor Yellow
+Write-Host ("-" * [math]::Min($w, $hdr.Length + 2)) -ForegroundColor DarkGray
+
+foreach ($v in $vols) {
+    $dl = "$($v.DriveLetter):"
+    $lbl = if ($v.FileSystemLabel) { $v.FileSystemLabel } else { "Local Disk" }
+    if ($lbl.Length -gt 16) { $lbl = $lbl.Substring(0, 16) }
+    $fs = $v.FileSystem
+    $tot = [math]::Round($v.Size / 1GB, 1)
+    $free = [math]::Round($v.SizeRemaining / 1GB, 1)
+    $usedPct = 0
+    if ($v.Size -gt 0) {
+        $usedPct = [math]::Round((($v.Size - $v.SizeRemaining) / $v.Size) * 100, 1)
+    }
+
+    # ASCII mini progress bar
+    $barLen = 10
+    $fill = [math]::Round($barLen * ($usedPct / 100))
+    $bar = ("=" * $fill) + ("-" * ($barLen - $fill))
+    $barStr = "[$bar]"
+
+    $col = if ($usedPct -ge 90) { "Red" } elseif ($usedPct -ge 75) { "Yellow" } else { "Green" }
+    $line = " {0,-5} | {1,-16} | {2,-8} | {3,9} | {4,9} | {5,7}% | {6,-16}" -f $dl, $lbl, $fs, $tot, $free, $usedPct, $barStr
+    Write-Host $line -ForegroundColor $col
+}
+Write-Host ""
+
+# 3. Real-Time NVMe Performance Sample
+Write-Host " [3. REAL-TIME STORAGE READ/WRITE THROUGHPUT]" -ForegroundColor Cyan
+$readSpeedMB = 0.0
+$writeSpeedMB = 0.0
+$activeTimePct = 0.0
 
 try {
     $c = Get-Counter '\PhysicalDisk(_Total)\Disk Read Bytes/sec', '\PhysicalDisk(_Total)\Disk Write Bytes/sec', '\PhysicalDisk(_Total)\% Disk Time' -MaxSamples 1 -ErrorAction Stop
@@ -41,31 +95,31 @@ try {
     $readSpeedMB = [math]::Round($readBytes / 1MB, 2)
     $writeSpeedMB = [math]::Round($writeBytes / 1MB, 2)
     $activeTimePct = [math]::Min(100, [math]::Round($diskTime, 1))
-} catch {
-    Write-Host "   [!] Performance counters unavailable." -ForegroundColor Yellow
-}
+} catch {}
 
-Write-Host "   Read Throughput:     $readSpeedMB MB/s" -ForegroundColor Cyan
+Write-Host "   Read Throughput:     $readSpeedMB MB/s" -ForegroundColor Green
 Write-Host "   Write Throughput:    $writeSpeedMB MB/s" -ForegroundColor Cyan
 Write-Host "   Disk Active Time:    $activeTimePct %" -ForegroundColor $(if ($activeTimePct -lt 20) { 'Green' } else { 'Yellow' })
 
-Write-Host ""
-# 3. Estimated Storage Power Impact
-Write-Host " [3. STORAGE POWER IMPACT]" -ForegroundColor Green
-# Modern Gen4 NVMe draws ~0.3W - 0.6W at idle (APST/ASPM active), and ~3.5W - 5.5W under sustained IO
+# Power estimate
 $estSsdWatts = 0.5
-if ($activeTimePct -gt 50 -or ($readSpeedMB + $writeSpeedMB) -gt 100) {
-    $estSsdWatts = 4.2
-} elseif ($activeTimePct -gt 10 -or ($readSpeedMB + $writeSpeedMB) -gt 10) {
-    $estSsdWatts = 2.1
-}
+if ($activeTimePct -gt 50 -or ($readSpeedMB + $writeSpeedMB) -gt 100) { $estSsdWatts = 4.2 }
+elseif ($activeTimePct -gt 10 -or ($readSpeedMB + $writeSpeedMB) -gt 10) { $estSsdWatts = 2.1 }
+Write-Host "   Storage Power State: $(if ($activeTimePct -le 5) { 'Autonomous Power State (APST L1.2 Low-Power Idle)' } else { 'Active IO State' })" -ForegroundColor Gray
 
-Write-Host "   Estimated SSD Draw:  $estSsdWatts Watts" -ForegroundColor $(if ($estSsdWatts -le 1.0) { 'Green' } else { 'Yellow' })
-Write-Host "   Power State:         $(if ($activeTimePct -le 5) { 'Autonomous Power State (APST Idle / Sleep)' } else { 'Active Read/Write IO State' })" -ForegroundColor Gray
-
-# 4. Storage Optimization Tip
 Write-Host ""
-Write-Host " [4. BATTERY SAVING STORAGE TIP]" -ForegroundColor Yellow
-Write-Host "   * Windows background indexing or cloud sync (OneDrive, etc.) can cause persistent" -ForegroundColor White
-Write-Host "     SSD wakeups, preventing the NVMe controller from staying in low-power L1.2 state." -ForegroundColor Gray
-Write-Host "================================================================================" -ForegroundColor Cyan
+Write-Host ("-" * $w) -ForegroundColor Cyan
+Write-Host " Options: [T] Run SSD TRIM Optimizer  |  [R] Refresh  |  [Enter] Return" -ForegroundColor Yellow
+Write-Host ("=" * $w) -ForegroundColor Cyan
+
+# Non-interactive check
+try {
+    if ([Console]::IsInputRedirected) { return }
+} catch { return }
+
+$key = [Console]::ReadKey($true)
+if ($key.Key -eq 'T' -or $key.KeyChar -eq 't') {
+    & "$ScriptDir\optimizer\SsdOptimizer.ps1"
+    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+    [Console]::ReadKey($true) | Out-Null
+}

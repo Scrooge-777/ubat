@@ -1,5 +1,5 @@
 @echo off
-title UBAT - Live Hardware & Battery Monitor
+title OMNI - Live Hardware & System Monitor
 cls
 python "%~dp0tui\ubat_tui.py"
 if %ERRORLEVEL% NEQ 0 (
