@@ -12,60 +12,52 @@ Whenever **ubat** runs on any PC, it automatically detects the exact brand and h
 * On ASUS: `ASUS ROG ZEPHYRUS - BATTERY, CPU, RAM & POWER MONITOR`
 * On Dell: `DELL XPS 15 - BATTERY, CPU, RAM & POWER MONITOR`
 
-### 🎛️ Three Flexible Interfaces (Terminal, Web, & Native Console)
-**ubat** now supports three distinct interface layers:
-1. **🌈 Rich Animated Terminal UI (Python & Rich Engine):** Cyberpunk neon styling, smooth ANSI animations, multi-core visualizers, live GPU wattage & interactive hotkeys.
-2. **🌐 Modern Web & App Dashboard (HTML + CSS + JS):** Futuristic dark-mode control center with glowing circular battery SVG dials, real-time Canvas charts, and Task Manager process manager.
-3. **⚡ Native Motionless Console Monitor (PowerShell):** Zero-dependency, flicker-free in-place console monitor with 6 partition views.
+### High-Performance Terminal Interfaces
+**ubat** provides two high-performance terminal environments:
+1. **Flagship Animated Terminal Dashboard (Python & Rich Engine):** Instantaneous keystroke response, Task Manager-style color heatmap shading, multi-core visualizers, live GPU wattage & interactive PID killer.
+2. **Native Motionless Console Monitor (PowerShell):** Zero-dependency, flicker-free in-place console monitor with 6 partition views.
 
 ---
 
-## 📁 Modular Subfolder Architecture
+## Modular Subfolder Architecture
 
 ```text
 ubat/
 │
-├── ubat.bat                      # 🎯 Master Interactive Menu Launcher (Options 1 - 0)
-├── Run-TUI.bat                   # 🌈 Quick Launch: Rich Animated Python Terminal UI
-├── Launch-Web-Dashboard.bat      # 🌐 Quick Launch: Modern Web & App Dashboard in browser
-├── Run-Live-Monitor.bat          # 🚀 Quick Launch: Partitioned live telemetry dashboard
-├── Optimize-Laptop.bat           # ⚡ Quick Launch: Auto-profile hardware & optimize power plan
-├── Start-Test-Logger.bat         # ⏺️ Quick Launch: Start background drain test recorder
-├── Stop-Test-Logger.bat          # ⏹️ Quick Launch: Stop background drain test recorder
-├── Generate-Report.bat           # 📊 Quick Launch: Instant statistical analysis & summary
+├── ubat.bat                      # Master Executable Launcher (Runs flagship terminal UI directly)
+├── Run-TUI.bat                   # 1-Click Launch: Flagship Animated Python Terminal
+├── Run-Live-Monitor.bat          # 1-Click Launch: Native PowerShell Motionless Monitor
+├── Optimize-Laptop.bat           # 1-Click Launch: Auto-profile hardware & optimize power plan
+├── Start-Test-Logger.bat         # 1-Click Launch: Start background drain test recorder
+├── Stop-Test-Logger.bat          # 1-Click Launch: Stop background drain test recorder
+├── Generate-Report.bat           # 1-Click Launch: Instant statistical analysis & summary
 │
-├── tui/                          # 🌈 Rich Animated Terminal Interface (Python)
-│   └── ubat_tui.py               # Neon dashboard with live animations, GPU stats & process killer
+├── tui/                          # Flagship Terminal Interface (Python)
+│   └── ubat_tui.py               # Live dashboard with Task Manager heatmaps & instant controls
 │
-├── web/                          # 🌐 Modern Web & App Dashboard (HTML / CSS / JS / Python)
-│   ├── index.html                # Cyberpunk glassmorphic control center
-│   ├── style.css                 # Obsidian dark theme, glowing SVG gauges & animations
-│   ├── app.js                    # Live telemetry poller, Canvas charts & process filter
-│   └── server.py                 # Zero-dependency local telemetry API server (port 5050)
-│
-├── core/                         # 🧠 Core Hardware Profiling Engine
+├── core/                         # Core Hardware Profiling Engine
 │   ├── HardwareProfile.ps1       # Auto-detects OEM, CPU, GPUs, Battery Design & Live Metrics
 │   └── BatteryHealthModel.ps1    # Algorithmic health grade, calibrated charge %, & cycle life
 │
-├── monitor/                      # 🖥️ Live Visualization Module
+├── monitor/                      # Live Visualization Module
 │   └── LiveMonitor.ps1           # Dynamic branded UI with partitioned views (1-6)
 │
-├── optimizer/                    # ⚡ Power Plan & Hardware Tuning Module
+├── optimizer/                    # Power Plan & Hardware Tuning Module
 │   └── PowerOptimizer.ps1        # Safe CPU boost capping (99%), PCIe ASPM, & GPU tuning
 │
-├── logger/                       # ⏺️ Background Crash-Proof Recording Daemon
+├── logger/                       # Background Crash-Proof Recording Daemon
 │   ├── BackgroundLogger.ps1      # 30-second silent fail-safe logger (saves into logs/)
 │   └── StopLogger.ps1            # PID-based background daemon terminator
 │
-├── analyzer/                     # 📊 Statistical Analytics & Reporting Engine
+├── analyzer/                     # Statistical Analytics & Reporting Engine
 │   └── LogAnalyzer.ps1           # Calculates average watts, drop %, runtime, and exports Markdown
 │
-├── diagnostics/                  # 🔍 Hardware Diagnostic Utilities
+├── diagnostics/                  # Hardware Diagnostic Utilities
 │   ├── ProcessManager.ps1        # Task Manager-style parallel table & interactive PID killer
 │   ├── SsdDiagnostics.ps1        # NVMe SSD throughput, health status, & storage power
 │   └── MeasureCpuDelta.ps1       # Process-level instantaneous CPU spike detector
 │
-├── logs/                         # 📁 Dedicated Logs Directory (All data saved here)
+├── logs/                         # Dedicated Logs Directory (All data saved here)
 │   ├── current-session.csv       # Active test session log
 │   ├── last-report.md            # Most recently generated statistical Markdown report
 │   └── archive/                  # Historical test sessions saved by timestamp
@@ -75,7 +67,7 @@ ubat/
 
 ---
 
-## 🚀 How to Run
+## How to Run
 
 ### Option A: Master Interactive Menu (Full Arrow-Key Navigation)
 Run **`ubat.bat`** from any terminal or double-click it:

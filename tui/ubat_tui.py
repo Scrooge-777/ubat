@@ -409,13 +409,13 @@ def build_gpu_ssd_panel():
 
 
 def build_process_table(limit=6):
-    """Renders active processes in Task Manager style with resource columns."""
+    """Renders active processes in Task Manager style with resource columns and heatmap shading."""
     table = Table(box=box.SIMPLE_HEAD, expand=True, header_style="bold cyan", padding=(0, 1))
     table.add_column("PID", justify="right", style="dim", width=7)
     table.add_column("APPLICATION NAME", style="bold white", width=22)
-    table.add_column("CPU %", justify="right", style="bold yellow", width=10)
-    table.add_column("RAM (MB)", justify="right", style="bold green", width=12)
-    table.add_column("DRAIN IMPACT", justify="center", width=14)
+    table.add_column("CPU %", justify="right", width=14)
+    table.add_column("RAM (MB)", justify="right", width=14)
+    table.add_column("POWER HEATMAP", justify="center", width=16)
 
     procs = TELEMETRY["processes"][:limit]
     if not procs:
@@ -424,19 +424,35 @@ def build_process_table(limit=6):
         for p in procs:
             cpu_val = p['cpu']
             mem_val = p['mem_mb']
-            if cpu_val > 5.0 or mem_val > 800:
-                impact = "[bold red]HIGH IMPACT[/bold red]"
-            elif cpu_val > 2.0 or mem_val > 300:
-                impact = "[bold yellow]MED IMPACT[/bold yellow]"
+
+            # Task Manager style color heatmap
+            if cpu_val >= 6.0:
+                cpu_cell = f"[bold white on #b91c1c] {cpu_val:4.1f}% [/bold white on #b91c1c]"
+            elif cpu_val >= 2.0:
+                cpu_cell = f"[bold black on #f59e0b] {cpu_val:4.1f}% [/bold black on #f59e0b]"
             else:
-                impact = "[bold green]LOW IMPACT[/bold green]"
+                cpu_cell = f"[dim green]{cpu_val:4.1f}%[/dim green]"
+
+            if mem_val >= 700.0:
+                mem_cell = f"[bold white on #b91c1c] {mem_val:5.1f} MB [/bold white on #b91c1c]"
+            elif mem_val >= 300.0:
+                mem_cell = f"[bold black on #f59e0b] {mem_val:5.1f} MB [/bold black on #f59e0b]"
+            else:
+                mem_cell = f"[dim green]{mem_val:5.1f} MB[/dim green]"
+
+            if cpu_val >= 6.0 or mem_val >= 700.0:
+                impact_badge = "[bold white on #b91c1c] HIGH DRAIN [/bold white on #b91c1c]"
+            elif cpu_val >= 2.0 or mem_val >= 300.0:
+                impact_badge = "[bold black on #f59e0b] MODERATE [/bold black on #f59e0b]"
+            else:
+                impact_badge = "[dim green] LOW/IDLE  [/dim green]"
 
             table.add_row(
                 str(p['pid']),
                 p['name'][:22],
-                f"{cpu_val:.1f}%",
-                f"{mem_val:.1f} MB",
-                impact
+                cpu_cell,
+                mem_cell,
+                impact_badge
             )
 
     sort_label = f"SORT: {PROCESS_SORT_MODE.upper()}"
@@ -531,17 +547,13 @@ def build_footer_panel():
     rate_str = f"{REFRESH_RATE}s"
 
     footer_text = Text()
-    footer_text.append(" [1] All ", style="bold white on #2563eb")
-    footer_text.append(" [2] Battery ", style="bold white on #1e293b")
-    footer_text.append(" [3] CPU ", style="bold white on #1e293b")
-    footer_text.append(" [4] RAM ", style="bold white on #1e293b")
-    footer_text.append(" [5] GPU/SSD ", style="bold white on #1e293b")
-    footer_text.append(" [6] Processes ", style="bold white on #1e293b")
+    footer_text.append(" [<-/-> or 1-6] Switch Views ", style="bold white on #2563eb")
     footer_text.append(f" [P] Power: {active_p} ", style="bold white on #059669")
     footer_text.append(f" [R] Rate: {rate_str} ", style="bold white on #0284c7")
     footer_text.append(f" [S] Sort: {PROCESS_SORT_MODE.upper()} ", style="bold white on #475569")
+    footer_text.append(f" [F] Filter: {PROCESS_FILTER_MODE.upper()} ", style="bold white on #334155")
     footer_text.append(" [K] Kill PID ", style="bold white on #dc2626")
-    footer_text.append(" [Q] Exit ", style="bold white on #334155")
+    footer_text.append(" [Q] Exit ", style="bold white on #1e293b")
 
     if STATUS_MESSAGE and (time.time() - STATUS_TIME < 4.0):
         footer_text.append(f"\n [NOTICE] {STATUS_MESSAGE}", style="bold yellow")
@@ -716,43 +728,73 @@ def main():
     worker = threading.Thread(target=telemetry_background_worker, daemon=True)
     worker.start()
 
-    with Live(render_dashboard(), refresh_per_second=int(1.0 / REFRESH_RATE), screen=True, console=console) as live:
+    views_list = ["all", "battery", "cpu", "ram", "gpu_ssd", "processes"]
+    last_render_time = time.time()
+
+    with Live(render_dashboard(), refresh_per_second=20, screen=True, console=console) as live:
         try:
             while RUNNING:
-                FRAME_INDEX += 1
-                poll_fast_telemetry()
-                live.update(render_dashboard())
-
-                # Non-blocking keyboard check
+                # 1. High-frequency non-blocking input poll (every 25ms)
                 if msvcrt.kbhit():
                     key = msvcrt.getch()
-                    if key in [b'q', b'Q', b'\x1b']:
+                    view_changed = False
+
+                    # Windows arrow keys prefix (0x00 or 0xe0)
+                    if key in [b'\x00', b'\xe0']:
+                        arrow = msvcrt.getch()
+                        idx = views_list.index(CURRENT_VIEW) if CURRENT_VIEW in views_list else 0
+                        if arrow == b'K':  # Left Arrow
+                            CURRENT_VIEW = views_list[(idx - 1) % len(views_list)]
+                            view_changed = True
+                        elif arrow == b'M':  # Right Arrow
+                            CURRENT_VIEW = views_list[(idx + 1) % len(views_list)]
+                            view_changed = True
+                    elif key in [b'q', b'Q', b'\x1b']:
                         RUNNING = False
                         break
                     elif key == b'1':
-                        CURRENT_VIEW = "all"
+                        CURRENT_VIEW = "all"; view_changed = True
                     elif key == b'2':
-                        CURRENT_VIEW = "battery"
+                        CURRENT_VIEW = "battery"; view_changed = True
                     elif key == b'3':
-                        CURRENT_VIEW = "cpu"
+                        CURRENT_VIEW = "cpu"; view_changed = True
                     elif key == b'4':
-                        CURRENT_VIEW = "ram"
+                        CURRENT_VIEW = "ram"; view_changed = True
                     elif key == b'5':
-                        CURRENT_VIEW = "gpu_ssd"
+                        CURRENT_VIEW = "gpu_ssd"; view_changed = True
                     elif key == b'6':
-                        CURRENT_VIEW = "processes"
+                        CURRENT_VIEW = "processes"; view_changed = True
                     elif key in [b'k', b'K']:
                         handle_kill_process_dialog(live)
+                        view_changed = True
                     elif key in [b'p', b'P']:
                         cycle_power_profile()
+                        view_changed = True
                     elif key in [b'r', b'R']:
                         toggle_refresh_rate()
+                        view_changed = True
                     elif key in [b's', b'S']:
                         toggle_process_sort()
+                        view_changed = True
                     elif key in [b'f', b'F']:
                         toggle_process_filter()
+                        view_changed = True
 
-                time.sleep(REFRESH_RATE)
+                    # Render INSTANTLY on key press without waiting for cadence
+                    if view_changed:
+                        poll_fast_telemetry()
+                        live.update(render_dashboard())
+                        last_render_time = time.time()
+
+                # 2. Render steady live preview on cadence
+                now = time.time()
+                if now - last_render_time >= REFRESH_RATE:
+                    FRAME_INDEX += 1
+                    poll_fast_telemetry()
+                    live.update(render_dashboard())
+                    last_render_time = now
+
+                time.sleep(0.025)
         except KeyboardInterrupt:
             pass
         finally:
