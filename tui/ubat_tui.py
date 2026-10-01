@@ -35,6 +35,18 @@ except ImportError:
     except ImportError:
         query_hwinfo_sensors = None
 
+try:
+    from diagnostics import bench_engine
+except ImportError:
+    try:
+        import bench_engine
+    except ImportError:
+        try:
+            sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "diagnostics"))
+            import bench_engine
+        except ImportError:
+            bench_engine = None
+
 # Console initialization
 console = Console()
 
@@ -121,6 +133,24 @@ TELEMETRY = {
     "last_disk_read": 0,
     "last_disk_write": 0,
     "last_disk_time": 0.0,
+    "benchmarks": {
+        "disk_seq_mbs": 0.0,
+        "disk_rnd_mbs": 0.0,
+        "disk_rnd_iops": 0,
+        "disk_lat_ms": 0.0,
+        "cpu_st_score": 0,
+        "cpu_st_ops": 0,
+        "cpu_mt_score": 0,
+        "cpu_mt_ops": 0,
+        "cpu_scale_ratio": 0.0,
+        "stress_peak_c": 0.0,
+        "stress_delta_c": 0.0,
+        "stress_ops": 0,
+        "stress_throttled": False,
+        "ram_read_gbs": 0.0,
+        "ram_copy_gbs": 0.0,
+        "last_bench_time": 0.0,
+    },
 }
 
 
@@ -581,6 +611,8 @@ def build_cpu_ram_panel():
     ram_avail = TELEMETRY["ram_avail_gb"]
     ram_total = HARDWARE_INFO["total_ram_gb"]
     ram_speed = HARDWARE_INFO.get("ram_speed_mts", 0)
+    cpu_temp = TELEMETRY.get("cpu_temp_c", 0.0)
+    cpu_freq = TELEMETRY.get("cpu_freq_mhz", 0)
 
     cpu_color = "green" if cpu_pct < 50 else "yellow" if cpu_pct < 80 else "red"
     ram_color = "green" if ram_pct < 65 else "yellow" if ram_pct < 85 else "red"
@@ -590,12 +622,21 @@ def build_cpu_ram_panel():
     table.add_column("Status", style="bold white")
 
     table.add_row("CPU Load", make_progress_bar(cpu_pct, width=14, color=cpu_color))
+    if cpu_temp > 0 or cpu_freq > 0:
+        t_col = "red" if cpu_temp >= 80 else "yellow" if cpu_temp >= 65 else "green"
+        table.add_row("CPU Thermals", f"[{t_col}]{cpu_temp} C[/{t_col}] [dim]@ {cpu_freq} MHz[/dim]")
+
     table.add_row("RAM Usage", make_progress_bar(ram_pct, width=14, color=ram_color))
     
     speed_tag = f" [dim](DDR5-{ram_speed} MT/s)[/dim]" if ram_speed > 0 else ""
     table.add_row("Memory Vol", f"[bold white]{ram_used:.1f} GB[/bold white] / [dim]{ram_total:.1f} GB[/dim]{speed_tag}")
 
-    if TELEMETRY.get("hwinfo_active", False):
+    bench = TELEMETRY.get("benchmarks", {})
+    if bench.get("cpu_mt_score", 0) > 0:
+        table.add_row("CPU Benchmark", f"[bold green]{bench['cpu_mt_score']} pts[/bold green] [dim](ST: {bench['cpu_st_score']})[/dim]")
+    elif bench.get("stress_peak_c", 0.0) > 0:
+        table.add_row("Last Stress", f"Peak: [yellow]{bench['stress_peak_c']} C[/yellow] [dim](+{bench['stress_delta_c']} C)[/dim]")
+    elif TELEMETRY.get("hwinfo_active", False):
         cpu_rpm = TELEMETRY.get("cpu_fan_rpm", 0)
         gpu_rpm = TELEMETRY.get("gpu_fan_rpm", 0)
         fan_str = f"CPU: {cpu_rpm} | GPU: {gpu_rpm} RPM" if (cpu_rpm > 0 or gpu_rpm > 0) else "Active"
@@ -636,7 +677,10 @@ def build_storage_panel():
     health_str = f"[bold green]{ssd_health}[/bold green] (Wear: [bold yellow]{ssd_wear}%[/bold yellow] | [yellow]{ssd_temp} C[/yellow])"
     table.add_row("Drive Health", health_str)
 
-    if gpu_hotspot > 0:
+    bench = TELEMETRY.get("benchmarks", {})
+    if bench.get("disk_seq_mbs", 0.0) > 0:
+        table.add_row("Read Bench", f"[bold green]{bench['disk_seq_mbs']} MB/s[/bold green] [dim](4K: {bench['disk_rnd_mbs']} MB/s)[/dim]")
+    elif gpu_hotspot > 0:
         table.add_row("GPU Thermals", f"[yellow]{TELEMETRY.get('gpu_temp', 0)} C[/yellow] (Hotspot: [bold red]{gpu_hotspot} C[/bold red])")
     elif gpu_pcie and gpu_pcie != "N/A":
         table.add_row("PCIe Link", f"[bold cyan]{gpu_pcie}[/bold cyan] [dim](dGPU Link)[/dim]")
@@ -740,14 +784,32 @@ def build_cpu_focus_view():
     cores = TELEMETRY["cpu_per_core"]
     logical = HARDWARE_INFO["cpu_cores_logical"]
     physical = HARDWARE_INFO["cpu_cores_physical"]
+    cpu_temp = TELEMETRY.get("cpu_temp_c", 0.0)
+    cpu_freq = TELEMETRY.get("cpu_freq_mhz", 0)
+    board = HARDWARE_INFO.get("board_model", "8D3F")
+    bios = HARDWARE_INFO.get("bios_version", "F.14")
+    mfg = HARDWARE_INFO.get("board_mfg", "HP")
 
     table = Table(box=box.ROUNDED, expand=True, padding=(0, 2))
     table.add_column("METRIC", style="bold cyan", width=24)
     table.add_column("STATUS", style="bold white")
 
     table.add_row("CPU Architecture", f"{HARDWARE_INFO['cpu_name']}")
+    table.add_row("Motherboard & BIOS", f"{mfg} {board} | BIOS {bios}")
     table.add_row("Core Configuration", f"{physical} Physical Cores / {logical} Logical Threads")
     table.add_row("Overall CPU Load", make_progress_bar(cpu_pct, width=28))
+    if cpu_temp > 0 or cpu_freq > 0:
+        t_col = "red" if cpu_temp >= 80 else "yellow" if cpu_temp >= 65 else "green"
+        table.add_row("Thermal Zone & Clock", f"[{t_col}]{cpu_temp} C[/{t_col}] [dim]@ {cpu_freq} MHz Average Clock Frequency[/dim]")
+
+    bench = TELEMETRY.get("benchmarks", {})
+    if bench.get("cpu_mt_score", 0) > 0:
+        table.add_row("Compute Benchmark", f"[bold green]{bench['cpu_mt_score']} pts[/bold green] [dim](Single: {bench['cpu_st_score']} pts, Scaling: {bench['cpu_scale_ratio']}x)[/dim]")
+    elif bench.get("stress_peak_c", 0.0) > 0:
+        throt_badge = "[bold red]THROTTLED[/bold red]" if bench.get("stress_throttled") else "[bold green]NOMINAL (No Throttling)[/bold green]"
+        table.add_row("Stress Test Result", f"Peak: [yellow]{bench['stress_peak_c']} C[/yellow] (+{bench['stress_delta_c']} C) | State: {throt_badge}")
+    else:
+        table.add_row("Benchmark / Stress", "Press [bold yellow][B][/bold yellow] to run Multi-Core Stress Test or CPU Benchmark")
 
     core_table = Table(box=box.SIMPLE, expand=True)
     for col_idx in range(4):
@@ -767,7 +829,7 @@ def build_cpu_focus_view():
 
     content = Layout()
     content.split_column(
-        Layout(Panel(table, box=box.ROUNDED, border_style="cyan"), size=7),
+        Layout(Panel(table, box=box.ROUNDED, border_style="cyan"), size=8),
         Layout(Panel(core_table, title="[bold cyan]PER-THREAD REAL-TIME ACTIVITY[/bold cyan]", box=box.ROUNDED, border_style="cyan")),
         Layout(build_process_table(limit=6), size=9),
     )
@@ -793,6 +855,14 @@ def build_storage_focus_view():
     hw_table.add_row("Lifetime Degradation", f"[bold green]{ssd_wear}% Wear[/bold green] [dim](Remaining Endurance: {100 - ssd_wear}%)[/dim]")
     hw_table.add_row("Drive Temperature", f"[bold yellow]{ssd_temp} C[/bold yellow] [dim](Optimal operating temperature)[/dim]")
     hw_table.add_row("Real-time Throughput", f"Read: [bold green]{read_mb:.1f} MB/s[/bold green]  |  Write: [bold cyan]{write_mb:.1f} MB/s[/bold cyan]")
+
+    bench = TELEMETRY.get("benchmarks", {})
+    if bench.get("disk_seq_mbs", 0.0) > 0:
+        hw_table.add_row("Sequential Read Speed", f"[bold green]{bench['disk_seq_mbs']} MB/s[/bold green] [dim](Tested 128MB test block)[/dim]")
+        hw_table.add_row("4K Random Read Speed", f"[bold green]{bench['disk_rnd_mbs']} MB/s[/bold green] [dim]({bench['disk_rnd_iops']} IOPS, {bench['disk_lat_ms']} ms)[/dim]")
+    else:
+        hw_table.add_row("Read Benchmark", "Press [bold yellow][B][/bold yellow] to run high-precision NVMe Sequential & 4K Read Benchmark")
+
     hw_table.add_row("Storage Optimizer", "Press [bold yellow][T][/bold yellow] to run volume TRIM & file system optimization")
 
     part_table = Table(box=box.SIMPLE_HEAD, expand=True, header_style="bold cyan", padding=(0, 1))
@@ -1024,6 +1094,20 @@ def build_sensors_view():
         if vrm_c > 0:
             sensor_table.add_row("Thermals", "Motherboard VRM / MOSFET", f"{vrm_c} C", "[dim]Passive mmap[/dim]")
 
+    # Hardware Benchmarks & Stress Results
+    bm = TELEMETRY.get("benchmarks", {})
+    if bm.get("last_bench_time", 0.0) > 0:
+        if bm.get("disk_seq_mbs", 0.0) > 0:
+            sensor_table.add_row("Benchmarks", "NVMe Read Benchmark", f"{bm['disk_seq_mbs']} MB/s Seq", f"4K: {bm['disk_rnd_mbs']} MB/s ({bm['disk_rnd_iops']:,} IOPS, {bm['disk_lat_ms']} ms)")
+        if bm.get("cpu_mt_score", 0) > 0:
+            sensor_table.add_row("Benchmarks", "CPU Benchmark", f"ST: {bm['cpu_st_score']:,} | MT: {bm['cpu_mt_score']:,}", f"Scaling Ratio: {bm['cpu_scale_ratio']}x")
+        if bm.get("stress_peak_c", 0.0) > 0:
+            sensor_table.add_row("Benchmarks", "CPU Thermal Stress", f"Peak: {bm['stress_peak_c']} C (+{bm['stress_delta_c']} C)", f"Ops: {bm['stress_ops']:,} | Throttled: {bm['stress_throttled']}")
+        if bm.get("ram_read_gbs", 0.0) > 0:
+            sensor_table.add_row("Benchmarks", "RAM Read Bandwidth", f"{bm['ram_read_gbs']} GB/s", f"Copy: {bm.get('ram_copy_gbs', 0)} GB/s")
+    else:
+        sensor_table.add_row("Benchmarks", "Hardware Benchmark Suite", "Press [B] to execute", "Storage Read, CPU Stress/Compute, RAM Bandwidth")
+
     layout = Layout()
     layout.split_column(
         Layout(Panel(header_table, title="[bold cyan]NATIVE DEEP HARDWARE & SENSOR MATRIX (ZERO EXTERNAL APPS)[/bold cyan]", box=box.ROUNDED, border_style="cyan"), size=5),
@@ -1044,6 +1128,7 @@ def build_footer_panel():
     footer_text = Text()
     footer_text.append(" [<-/-> or 1-8] Views ", style="bold white on #2563eb")
     footer_text.append(" [8] Sensors ", style="bold white on #0891b2")
+    footer_text.append(" [B] Bench/Stress ", style="bold white on #b45309")
     footer_text.append(" [T] SSD TRIM ", style="bold white on #059669")
     footer_text.append(" [O] Logs Folder ", style="bold white on #7c3aed")
     footer_text.append(f" [R] Rate: {rate_str} ", style="bold white on #0284c7")
@@ -1122,6 +1207,173 @@ def render_dashboard():
         layout["body"].update(build_sensors_view())
 
     return layout
+
+
+def run_interactive_benchmark(live):
+    """Interactive benchmark and hardware stress testing dialog."""
+    global STATUS_MESSAGE, STATUS_TIME
+    if bench_engine is None:
+        STATUS_MESSAGE = "Benchmark engine module could not be loaded."
+        STATUS_TIME = time.time()
+        return
+
+    live.stop()
+    console.clear()
+    console.print("\n[bold cyan]=============================================================================[/bold cyan]")
+    console.print("[bold white]            OMNI BENCHMARK & HARDWARE STRESS TESTING SUITE[/bold white]")
+    console.print("[bold cyan]=============================================================================[/bold cyan]")
+    console.print("  [bold yellow][1][/bold yellow] NVMe Storage Read Benchmark (Sequential MB/s, 4K Random IOPS, Latency)")
+    console.print("  [bold yellow][2][/bold yellow] Multi-Core CPU Stress Test (10s Sustained Thermal & Throttle Load)")
+    console.print("  [bold yellow][3][/bold yellow] Extended CPU Stress Test (30s Peak Workload Burn-In)")
+    console.print("  [bold yellow][4][/bold yellow] CPU Computational Benchmark (Single-Thread & Multi-Thread Score)")
+    console.print("  [bold yellow][5][/bold yellow] DDR5 RAM Memory Bandwidth Benchmark (Sequential Read GB/s)")
+    console.print("  [bold yellow][6][/bold yellow] All-in-One Full System Hardware Benchmark (Storage + RAM + CPU)")
+    console.print("  [bold yellow][0][/bold yellow] Return to Dashboard")
+    console.print("[bold cyan]=============================================================================[/bold cyan]")
+
+    choice = console.input("\n[bold green]Select benchmark option [0-6]: [/bold green]").strip()
+
+    if choice == "1":
+        console.print("\n[bold cyan]Executing NVMe Storage Read Benchmark (128MB payload, 500 random seeks)...[/bold cyan]")
+        res = bench_engine.run_storage_read_benchmark()
+        if res.get("status") == "PASS":
+            TELEMETRY["benchmarks"]["disk_seq_mbs"] = res["seq_read_mbs"]
+            TELEMETRY["benchmarks"]["disk_rnd_mbs"] = res["rnd_read_mbs"]
+            TELEMETRY["benchmarks"]["disk_rnd_iops"] = res["rnd_read_iops"]
+            TELEMETRY["benchmarks"]["disk_lat_ms"] = res["avg_latency_ms"]
+            TELEMETRY["benchmarks"]["last_bench_time"] = time.time()
+            console.print(f"\n[bold green][PASS] NVMe Storage Read Results:[/bold green]")
+            console.print(f"  - Sequential Read Speed : [bold white]{res['seq_read_mbs']} MB/s[/bold white]")
+            console.print(f"  - 4K Random Read Speed  : [bold white]{res['rnd_read_mbs']} MB/s[/bold white]")
+            console.print(f"  - Random Read IOPS      : [bold white]{res['rnd_read_iops']:,} IOPS[/bold white]")
+            console.print(f"  - Average Access Latency: [bold white]{res['avg_latency_ms']} ms[/bold white]")
+            STATUS_MESSAGE = f"Storage Benchmark: {res['seq_read_mbs']} MB/s Seq | {res['rnd_read_iops']} IOPS"
+        else:
+            console.print(f"\n[bold red][FAIL] Storage Benchmark Error: {res.get('error')}[/bold red]")
+            STATUS_MESSAGE = "Storage Benchmark Failed."
+        STATUS_TIME = time.time()
+        console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
+
+    elif choice in ["2", "3"]:
+        duration = 10 if choice == "2" else 30
+        console.print(f"\n[bold yellow]Starting {duration}s Multi-Core CPU Stress Test across all logical threads...[/bold yellow]")
+        console.print("[dim]Monitoring thermal rise and clock frequency shifts...[/dim]\n")
+
+        def on_progress(elapsed, total, temp, freq):
+            pct = int((elapsed / total) * 100)
+            bar = "=" * (pct // 5) + ">" + " " * (20 - (pct // 5))
+            sys.stdout.write(f"\r  [{bar}] {elapsed:.0f}s/{total}s | Temp: {temp:.1f} C | Freq: {freq} MHz")
+            sys.stdout.flush()
+
+        res = bench_engine.run_cpu_stress_test(duration=duration, progress_cb=on_progress)
+        print()
+        TELEMETRY["benchmarks"]["stress_peak_c"] = res["peak_temp_c"]
+        TELEMETRY["benchmarks"]["stress_delta_c"] = res["temp_delta_c"]
+        TELEMETRY["benchmarks"]["stress_ops"] = res["total_ops"]
+        TELEMETRY["benchmarks"]["stress_throttled"] = res["thermal_throttling"]
+        TELEMETRY["benchmarks"]["last_bench_time"] = time.time()
+
+        throt_str = "[bold red]THROTTLING DETECTED[/bold red]" if res["thermal_throttling"] else "[bold green]NOMINAL (No Throttling)[/bold green]"
+        console.print(f"\n[bold green][DONE] CPU Stress Test Completed ({res['duration_s']}s):[/bold green]")
+        console.print(f"  - Total Mathematical Ops : [bold white]{res['total_ops']:,}[/bold white] ({res['ops_per_sec']:,} ops/sec)")
+        console.print(f"  - Baseline Temperature   : [bold white]{res['base_temp_c']} C[/bold white]")
+        console.print(f"  - Peak Temperature       : [bold white]{res['peak_temp_c']} C[/bold white] (Rise: +{res['temp_delta_c']} C)")
+        console.print(f"  - Baseline Clock Speed   : [bold white]{res['base_freq_mhz']} MHz[/bold white]")
+        console.print(f"  - Final Clock Speed      : [bold white]{res['final_freq_mhz']} MHz[/bold white]")
+        console.print(f"  - Hardware Throttle State: {throt_str}")
+
+        STATUS_MESSAGE = f"CPU Stress: Peak {res['peak_temp_c']} C (+{res['temp_delta_c']} C) | {res['ops_per_sec']:,} ops/s"
+        STATUS_TIME = time.time()
+        console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
+
+    elif choice == "4":
+        console.print("\n[bold cyan]Executing CPU Computational Benchmark (Single & Multi-Thread)...[/bold cyan]")
+        res = bench_engine.run_cpu_benchmark(duration_seconds=3)
+        TELEMETRY["benchmarks"]["cpu_st_score"] = res["single_thread_score"]
+        TELEMETRY["benchmarks"]["cpu_st_ops"] = res["single_thread_ops_sec"]
+        TELEMETRY["benchmarks"]["cpu_mt_score"] = res["multi_thread_score"]
+        TELEMETRY["benchmarks"]["cpu_mt_ops"] = res["multi_thread_ops_sec"]
+        TELEMETRY["benchmarks"]["cpu_scale_ratio"] = res["multi_thread_ratio"]
+        TELEMETRY["benchmarks"]["last_bench_time"] = time.time()
+
+        console.print(f"\n[bold green][PASS] CPU Computational Benchmark Results:[/bold green]")
+        console.print(f"  - Single-Thread Score : [bold white]{res['single_thread_score']:,} pts[/bold white] ({res['single_thread_ops_sec']:,} ops/sec)")
+        console.print(f"  - Multi-Thread Score  : [bold white]{res['multi_thread_score']:,} pts[/bold white] ({res['multi_thread_ops_sec']:,} ops/sec)")
+        console.print(f"  - Multi-Core Scaling  : [bold white]{res['multi_thread_ratio']}x[/bold white] across {res['threads_tested']} threads")
+
+        STATUS_MESSAGE = f"CPU Benchmark: ST {res['single_thread_score']} | MT {res['multi_thread_score']} ({res['multi_thread_ratio']}x)"
+        STATUS_TIME = time.time()
+        console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
+
+    elif choice == "5":
+        console.print("\n[bold cyan]Executing RAM Memory Bandwidth Benchmark (128MB test block)...[/bold cyan]")
+        res = bench_engine.run_ram_bandwidth_benchmark(buffer_mb=128)
+        if res.get("status") == "PASS":
+            TELEMETRY["benchmarks"]["ram_read_gbs"] = res["read_bandwidth_gbs"]
+            TELEMETRY["benchmarks"]["ram_copy_gbs"] = res["copy_bandwidth_gbs"]
+            TELEMETRY["benchmarks"]["last_bench_time"] = time.time()
+
+            console.print(f"\n[bold green][PASS] RAM Memory Bandwidth Results:[/bold green]")
+            console.print(f"  - Sequential Read Bandwidth: [bold white]{res['read_bandwidth_gbs']} GB/s[/bold white]")
+            console.print(f"  - Memory Copy Bandwidth    : [bold white]{res['copy_bandwidth_gbs']} GB/s[/bold white]")
+            STATUS_MESSAGE = f"RAM Bandwidth: Read {res['read_bandwidth_gbs']} GB/s | Copy {res['copy_bandwidth_gbs']} GB/s"
+        else:
+            console.print(f"\n[bold red][FAIL] RAM Benchmark Error: {res.get('error')}[/bold red]")
+            STATUS_MESSAGE = "RAM Benchmark Failed."
+        STATUS_TIME = time.time()
+        console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
+
+    elif choice == "6":
+        console.print("\n[bold cyan]Starting All-in-One Full System Hardware Benchmark...[/bold cyan]")
+
+        # 1. Storage
+        console.print("  [1/4] Running NVMe Storage Read Benchmark...")
+        d_res = bench_engine.run_storage_read_benchmark(test_size_mb=64, num_random_ops=300)
+        if d_res.get("status") == "PASS":
+            TELEMETRY["benchmarks"]["disk_seq_mbs"] = d_res["seq_read_mbs"]
+            TELEMETRY["benchmarks"]["disk_rnd_mbs"] = d_res["rnd_read_mbs"]
+            TELEMETRY["benchmarks"]["disk_rnd_iops"] = d_res["rnd_read_iops"]
+            TELEMETRY["benchmarks"]["disk_lat_ms"] = d_res["avg_latency_ms"]
+
+        # 2. RAM
+        console.print("  [2/4] Running DDR5 RAM Memory Bandwidth Benchmark...")
+        r_res = bench_engine.run_ram_bandwidth_benchmark(buffer_mb=64)
+        if r_res.get("status") == "PASS":
+            TELEMETRY["benchmarks"]["ram_read_gbs"] = r_res["read_bandwidth_gbs"]
+            TELEMETRY["benchmarks"]["ram_copy_gbs"] = r_res["copy_bandwidth_gbs"]
+
+        # 3. CPU Compute
+        console.print("  [3/4] Running CPU Computational Benchmark...")
+        c_res = bench_engine.run_cpu_benchmark(duration_seconds=2)
+        TELEMETRY["benchmarks"]["cpu_st_score"] = c_res["single_thread_score"]
+        TELEMETRY["benchmarks"]["cpu_st_ops"] = c_res["single_thread_ops_sec"]
+        TELEMETRY["benchmarks"]["cpu_mt_score"] = c_res["multi_thread_score"]
+        TELEMETRY["benchmarks"]["cpu_mt_ops"] = c_res["multi_thread_ops_sec"]
+        TELEMETRY["benchmarks"]["cpu_scale_ratio"] = c_res["multi_thread_ratio"]
+
+        # 4. CPU Stress
+        console.print("  [4/4] Running 5s Multi-Core CPU Thermal Stress Test...")
+        s_res = bench_engine.run_cpu_stress_test(duration=5)
+        TELEMETRY["benchmarks"]["stress_peak_c"] = s_res["peak_temp_c"]
+        TELEMETRY["benchmarks"]["stress_delta_c"] = s_res["temp_delta_c"]
+        TELEMETRY["benchmarks"]["stress_ops"] = s_res["total_ops"]
+        TELEMETRY["benchmarks"]["stress_throttled"] = s_res["thermal_throttling"]
+        TELEMETRY["benchmarks"]["last_bench_time"] = time.time()
+
+        console.print("\n[bold green]=============================================================================[/bold green]")
+        console.print("[bold white]                   FULL SYSTEM BENCHMARK SUMMARY[/bold white]")
+        console.print("[bold green]=============================================================================[/bold green]")
+        console.print(f"  - Storage Sequential Read: [bold white]{d_res.get('seq_read_mbs', 0)} MB/s[/bold white] (4K IOPS: {d_res.get('rnd_read_iops', 0):,})")
+        console.print(f"  - RAM Read Bandwidth     : [bold white]{r_res.get('read_bandwidth_gbs', 0)} GB/s[/bold white]")
+        console.print(f"  - CPU Multi-Thread Score : [bold white]{c_res.get('multi_thread_score', 0):,} pts[/bold white] (ST: {c_res.get('single_thread_score', 0):,}, {c_res.get('multi_thread_ratio', 0)}x)")
+        console.print(f"  - CPU Peak Stress Thermal: [bold white]{s_res.get('peak_temp_c', 0)} C[/bold white] (+{s_res.get('temp_delta_c', 0)} C rise)")
+        console.print("[bold green]=============================================================================[/bold green]")
+
+        STATUS_MESSAGE = "Full System Benchmark Completed Successfully."
+        STATUS_TIME = time.time()
+        console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
+
+    live.start()
 
 
 def handle_kill_process_dialog(live):
@@ -1241,6 +1493,9 @@ def main():
                     elif key in [b'h', b'H']:
                         refresh_sensor_metrics()
                         CURRENT_VIEW = "sensors"; view_changed = True
+                    elif key in [b'b', b'B']:
+                        run_interactive_benchmark(live)
+                        view_changed = True
                     elif key in [b't', b'T']:
                         run_ssd_trim_optimizer(live)
                         view_changed = True

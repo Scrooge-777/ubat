@@ -155,7 +155,7 @@ $mainOptions = @(
     [PSCustomObject]@{ Key = "4"; Title = "CPU & Memory Hub";          Desc = "Multi-thread core loads, RAM volume & frequency limits" }
     [PSCustomObject]@{ Key = "5"; Title = "Process Manager Hub";       Desc = "Fast resource monitor & interactive PID killer" }
     [PSCustomObject]@{ Key = "6"; Title = "Session Logs & Reports";    Desc = "In-terminal session logs, analysis reports & folder access" }
-    [PSCustomObject]@{ Key = "7"; Title = "Native Deep Sensor Hub";    Desc = "Per-core frequencies, thermal zones, GPU clocks & BIOS matrix" }
+    [PSCustomObject]@{ Key = "7"; Title = "Benchmark & Stress Testing Hub";Desc = "Storage read benchmark, CPU stress tests & RAM bandwidth" }
     [PSCustomObject]@{ Key = "0"; Title = "Exit";                      Desc = "Exit OMNI toolkit" }
 )
 
@@ -264,7 +264,8 @@ while ($true) {
                 [PSCustomObject]@{ Key = "1"; Title = "All-in-One Storage Diagnostics"; Desc = "Complete physical drive, partitions & wear overview" }
                 [PSCustomObject]@{ Key = "2"; Title = "Partitions & File Systems Table";  Desc = "Detailed breakdown of C:, G:, S: labels & space" }
                 [PSCustomObject]@{ Key = "3"; Title = "Physical SSD SMART Health & Wear";Desc = "Drive model, temperature & degradation level %" }
-                [PSCustomObject]@{ Key = "4"; Title = "Run SSD TRIM Optimizer";          Desc = "Execute volume ReTrim & write wear reduction" }
+                [PSCustomObject]@{ Key = "4"; Title = "NVMe Storage Read Benchmark";     Desc = "Benchmark sequential & 4K random read throughput in MB/s" }
+                [PSCustomObject]@{ Key = "5"; Title = "Run SSD TRIM Optimizer";          Desc = "Execute volume ReTrim & write wear reduction" }
                 [PSCustomObject]@{ Key = "0"; Title = "Return to Main Menu";             Desc = "Back to subsystem launcher" }
             )
             $subPick = Show-SubMenu -HubTitle "STORAGE & NVME SSD HUB" -Options $subOpts
@@ -286,6 +287,11 @@ while ($true) {
                     [Console]::ReadKey($true) | Out-Null
                 }
                 "4" {
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -StorageRead
+                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                    [Console]::ReadKey($true) | Out-Null
+                }
+                "5" {
                     & "$ScriptDir\optimizer\SsdOptimizer.ps1"
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
@@ -335,9 +341,12 @@ while ($true) {
             # CPU & Memory Hub (Option inside an option)
             $subOpts = @(
                 [PSCustomObject]@{ Key = "1"; Title = "All-in-One CPU & RAM Status";    Desc = "Overall load %, clocks, cores, DDR5 speed & modules" }
-                [PSCustomObject]@{ Key = "2"; Title = "Measure Instantaneous CPU Spikes";Desc = "Detect per-process CPU spikes in real-time" }
-                [PSCustomObject]@{ Key = "3"; Title = "Cap CPU Boost Frequency (99%)";  Desc = "Disable thermal throttling spikes safely" }
-                [PSCustomObject]@{ Key = "4"; Title = "Live CPU Clocks & Thermal Zones";Desc = "Real-time MHz per core group and ACPI temperatures" }
+                [PSCustomObject]@{ Key = "2"; Title = "Live CPU Clocks & Thermal Zones";Desc = "Real-time MHz per core group and ACPI temperatures" }
+                [PSCustomObject]@{ Key = "3"; Title = "Multi-Core CPU Stress Test";     Desc = "Stress all CPU threads with live thermal rise tracking" }
+                [PSCustomObject]@{ Key = "4"; Title = "CPU Computational Benchmark";     Desc = "Standardized mathematical benchmark scoring" }
+                [PSCustomObject]@{ Key = "5"; Title = "RAM Memory Bandwidth Benchmark"; Desc = "Measure sequential memory read & copy rate in GB/s" }
+                [PSCustomObject]@{ Key = "6"; Title = "Measure Instantaneous CPU Spikes";Desc = "Detect per-process CPU spikes in real-time" }
+                [PSCustomObject]@{ Key = "7"; Title = "Cap CPU Boost Frequency (99%)";  Desc = "Disable thermal throttling spikes safely" }
                 [PSCustomObject]@{ Key = "0"; Title = "Return to Main Menu";             Desc = "Back to subsystem launcher" }
             )
             $subPick = Show-SubMenu -HubTitle "CPU & MEMORY HUB" -Options $subOpts
@@ -349,16 +358,6 @@ while ($true) {
                     [Console]::ReadKey($true) | Out-Null
                 }
                 "2" {
-                    & "$ScriptDir\diagnostics\MeasureCpuDelta.ps1"
-                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
-                }
-                "3" {
-                    & "$ScriptDir\optimizer\PowerOptimizer.ps1"
-                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
-                }
-                "4" {
                     Write-Host "================================================================================" -ForegroundColor Cyan
                     Write-Host "             LIVE CPU CLOCKS & THERMAL ZONE MONITOR" -ForegroundColor Yellow
                     Write-Host "================================================================================" -ForegroundColor Cyan
@@ -369,6 +368,31 @@ while ($true) {
                     Write-Host " ACPI Thermal Zone : $temp C" -ForegroundColor White
                     Write-Host " Average CPU Clock : $([math]::Round($avg)) MHz" -ForegroundColor White
                     Write-Host "================================================================================" -ForegroundColor Cyan
+                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                    [Console]::ReadKey($true) | Out-Null
+                }
+                "3" {
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -CpuStress -StressDuration 10
+                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                    [Console]::ReadKey($true) | Out-Null
+                }
+                "4" {
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -CpuBench
+                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                    [Console]::ReadKey($true) | Out-Null
+                }
+                "5" {
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -RamBench
+                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                    [Console]::ReadKey($true) | Out-Null
+                }
+                "6" {
+                    & "$ScriptDir\diagnostics\MeasureCpuDelta.ps1"
+                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                    [Console]::ReadKey($true) | Out-Null
+                }
+                "7" {
+                    & "$ScriptDir\optimizer\PowerOptimizer.ps1"
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }
@@ -419,53 +443,40 @@ while ($true) {
         }
 
         "7" {
-            # Native Deep Sensor Hub (Option inside an option)
+            # Hardware Benchmark & Stress Testing Hub (Option inside an option)
             $subOpts = @(
-                [PSCustomObject]@{ Key = "1"; Title = "All-in-One Deep Hardware Matrix";Desc = "Complete Motherboard, BIOS, CPU, GPU & NVMe SMART matrix" }
-                [PSCustomObject]@{ Key = "2"; Title = "Live CPU Clocks & Thermal Zones";Desc = "Real-time MHz per core group and ACPI temperatures" }
-                [PSCustomObject]@{ Key = "3"; Title = "NVIDIA dGPU Telemetry & Clocks";  Desc = "VRAM usage, memory MHz, power draw, PCIe Gen5 link & throttling" }
-                [PSCustomObject]@{ Key = "4"; Title = "Physical RAM & SPD Topology";    Desc = "DDR5 clock speed, module banks, vendor & part numbers" }
+                [PSCustomObject]@{ Key = "1"; Title = "NVMe Storage Read Benchmark";     Desc = "Benchmark sequential & 4K random read throughput in MB/s" }
+                [PSCustomObject]@{ Key = "2"; Title = "Multi-Core CPU Thermal Stress Test";Desc = "Stress all CPU threads with live temperature tracking" }
+                [PSCustomObject]@{ Key = "3"; Title = "CPU Computational Benchmark";     Desc = "Measure single-thread & multi-thread compute score" }
+                [PSCustomObject]@{ Key = "4"; Title = "RAM Memory Bandwidth Benchmark"; Desc = "Measure DDR5 read and copy throughput in GB/s" }
+                [PSCustomObject]@{ Key = "5"; Title = "All-in-One Full System Benchmark";Desc = "Run full sequence of Storage, RAM and CPU benchmarks" }
                 [PSCustomObject]@{ Key = "0"; Title = "Return to Main Menu";             Desc = "Back to subsystem launcher" }
             )
-            $subPick = Show-SubMenu -HubTitle "NATIVE DEEP SENSOR & HARDWARE HUB" -Options $subOpts
+            $subPick = Show-SubMenu -HubTitle "HARDWARE BENCHMARK & STRESS TESTING HUB" -Options $subOpts
             Clear-Host
             switch ($subPick) {
                 "1" {
-                    & "$ScriptDir\core\HardwareProfile.ps1" -ShowUi
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -StorageRead
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }
                 "2" {
-                    Write-Host "================================================================================" -ForegroundColor Cyan
-                    Write-Host "             LIVE CPU CLOCKS & THERMAL ZONE MONITOR (10 SECONDS)" -ForegroundColor Yellow
-                    Write-Host "================================================================================" -ForegroundColor Cyan
-                    for ($s = 1; $s -le 10; $s++) {
-                        $tz = Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction SilentlyContinue
-                        $temp = if ($tz -and $tz.CurrentTemperature) { [math]::Round(($tz.CurrentTemperature - 2732) / 10, 1) } else { 0 }
-                        $freqSamples = (Get-Counter '\Processor Information(*)\Processor Frequency' -ErrorAction SilentlyContinue).CounterSamples
-                        $avg = $freqSamples | Where-Object { $_.InstanceName -eq '_total' } | Select-Object -ExpandProperty CookedValue
-                        Write-Host " [$s/10] ACPI Thermal Zone: $temp C  |  Average CPU Clock: $([math]::Round($avg)) MHz" -ForegroundColor White
-                        Start-Sleep -Seconds 1
-                    }
-                    Write-Host "================================================================================" -ForegroundColor Cyan
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -CpuStress -StressDuration 10
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }
                 "3" {
-                    Write-Host "================================================================================" -ForegroundColor Cyan
-                    Write-Host "                  NVIDIA dGPU DEEP SENSOR TELEMETRY" -ForegroundColor Yellow
-                    Write-Host "================================================================================" -ForegroundColor Cyan
-                    nvidia-smi --query-gpu=name,driver_version,temperature.gpu,utilization.gpu,memory.total,memory.used,memory.free,power.draw,clocks.current.graphics,clocks.current.memory,pcie.link.gen.current,pcie.link.width.current,clocks_throttle_reasons.active --format=table 2>$null
-                    Write-Host "================================================================================" -ForegroundColor Cyan
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -CpuBench
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }
                 "4" {
-                    Write-Host "================================================================================" -ForegroundColor Cyan
-                    Write-Host "                    PHYSICAL RAM MODULE & SPD TOPOLOGY" -ForegroundColor Yellow
-                    Write-Host "================================================================================" -ForegroundColor Cyan
-                    Get-CimInstance Win32_PhysicalMemory | Select-Object BankLabel, Manufacturer, PartNumber, ConfiguredClockSpeed, Capacity, FormFactor, MemoryType | Format-Table -AutoSize
-                    Write-Host "================================================================================" -ForegroundColor Cyan
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -RamBench
+                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                    [Console]::ReadKey($true) | Out-Null
+                }
+                "5" {
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -All
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }

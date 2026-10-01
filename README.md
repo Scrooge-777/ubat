@@ -58,7 +58,9 @@ ubat/
 |   +-- LogAnalyzer.ps1           # Calculates average watts, drop %, runtime, and exports Markdown
 |   \-- ViewLogs.ps1              # In-terminal session log viewer with File Explorer shortcut
 |
-+-- diagnostics/                  # Hardware Diagnostic Utilities
++-- diagnostics/                  # Hardware Diagnostic & Benchmark Utilities
+|   +-- BenchmarkEngine.ps1       # Native PowerShell storage read, CPU stress & RAM benchmark
+|   +-- bench_engine.py           # High-precision Python storage read, CPU stress & RAM benchmark
 |   +-- ProcessManager.ps1        # High-speed process table & interactive PID killer (<20ms)
 |   +-- SsdDiagnostics.ps1        # Partition tables, file systems, SMART wear % & throughput
 |   \-- MeasureCpuDelta.ps1       # Process-level instantaneous CPU spike detector
@@ -87,12 +89,12 @@ Run **`omni --menu`** or **`ubat --menu`**:
  (Use [Up / Down] Arrow Keys to navigate, [Enter] to select, or tap [0-7])
 
   > [1] Live System Monitor      - All-in-One real-time terminal telemetry engine
-    [2] Storage & SSD Hub        - Partitions, file systems, SMART wear & SSD TRIM optimizer
+    [2] Storage & SSD Hub        - Partitions, SMART wear, TRIM & NVMe read benchmark
     [3] Battery & Health Hub     - Calibrated health %, wear level, cycle count & battery tuner
-    [4] CPU & Memory Hub         - Multi-thread core loads, RAM volume & frequency limits
+    [4] CPU & Memory Hub         - Multi-thread loads, thermals, CPU stress & RAM bandwidth
     [5] Process Manager Hub      - Fast resource monitor & interactive PID killer
     [6] Session Logs & Reports   - In-terminal session logs, analysis reports & folder access
-    [7] Native Deep Sensor Hub   - Complete Motherboard, BIOS, CPU thermals, GPU & NVMe SMART matrix
+    [7] Benchmark & Stress Hub   - Storage read speeds, multi-core CPU stress & RAM bandwidth
     [0] Exit                     - Exit OMNI toolkit
 
 ------------------------------------------------------------------------------------------
@@ -102,7 +104,56 @@ Run **`omni --menu`** or **`ubat --menu`**:
 ### Option B: Direct Terminal Launch
 Typing **`omni`** or **`ubat`** from any terminal opens the live monitor directly:
 * Arrow keys `[<- / ->]` or `[1-8]` cycle between All, Battery, CPU, RAM, Storage, Processes, Logs, and Sensors views.
+* `[B]` launches the interactive Benchmark & Hardware Stress Testing Suite.
 * `[8]` or `[H]` opens the Native Deep Sensor Matrix and triggers an instant hardware bus poll.
 * `[T]` triggers real-time volume TRIM & SSD optimization on all mounted partitions.
 * `[O]` opens the `logs` folder in Windows File Explorer.
 * `[K]` prompts for PID termination directly inside the terminal.
+* `[R]` toggles refresh interval (0.25s, 0.5s, 1.0s, 2.0s).
+* `[S]` toggles process sorting (CPU vs RAM).
+* `[F]` toggles process filtering (All vs Heavy).
+* `[Q]` exits the monitor cleanly.
+
+---
+
+## Decentralized Hardware Telemetry Architecture
+
+Rather than isolating telemetry into a single disconnected area, **OMNI** distributes metrics directly into their natural functional domains:
+
+1. **CPU Hub & Focus View (`[3]` or `ubat.ps1 [4]`):**
+   * Motherboard model & vendor (HP 8D3F)
+   * System BIOS version & release date (F.14)
+   * Live ACPI thermal zone temperature (MSAcpi_ThermalZoneTemperature)
+   * Average processor clock frequency (MHz)
+   * Multi-Core CPU Stress Test results (peak thermal rise, delta, throttle state)
+   * CPU Computational Benchmark scoring (single-thread & multi-thread scaling)
+
+2. **Storage & SSD Hub (`[5]` or `ubat.ps1 [2]`):**
+   * Physical drive identification & SMART health state
+   * Lifetime wear degradation percentage & remaining endurance
+   * Controller operating temperature (C)
+   * High-precision NVMe Sequential Read Throughput (MB/s)
+   * 4K Random Read Throughput (MB/s), IOPS, and average access latency (ms)
+   * File system volume TRIM & write wear optimizer
+
+3. **Memory & RAM Hub (`[4]` or `ubat.ps1 [4]`):**
+   * Configured DDR5 bus clock speed (e.g., 5600 MT/s)
+   * Physical SPD memory module bank topology (SK Hynix part numbers, per-slot GB)
+   * Physical memory read & copy bandwidth benchmarks (GB/s)
+
+---
+
+## Benchmark & Hardware Stress Testing Suite
+
+The benchmark engine provides safe, non-destructive hardware testing available both via Python (`diagnostics/bench_engine.py`) and PowerShell (`diagnostics/BenchmarkEngine.ps1`):
+
+* **NVMe Storage Read Benchmark:**
+  Measures pure sequential read throughput (1MB blocks) and 4K unbuffered random read throughput, calculating real-world IOPS and sub-millisecond access latency. Tests are executed against a safe, transient test block in the system temp directory and cleaned up immediately.
+* **Multi-Core CPU Stress Test:**
+  Saturates all physical cores and logical threads with high-intensity floating-point math workloads (10s or 30s). Continuously monitors ACPI thermal zone rise and clock frequency dips to detect hardware thermal throttling.
+* **CPU Computational Benchmark:**
+  Runs normalized single-threaded and multi-threaded mathematical workloads, calculating computational scores and multi-core scaling efficiency ratios.
+* **RAM Memory Bandwidth Benchmark:**
+  Allocates high-speed memory buffers to measure sequential memory read throughput and memory copy rates in GB/s.
+* **All-in-One Full System Hardware Benchmark:**
+  Executes the entire suite in automated sequence and outputs a comprehensive system performance scorecard.
