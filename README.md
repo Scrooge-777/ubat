@@ -12,22 +12,11 @@ Whenever **ubat** runs on any PC, it automatically detects the exact brand and h
 * On ASUS: `ASUS ROG ZEPHYRUS - BATTERY, CPU, RAM & POWER MONITOR`
 * On Dell: `DELL XPS 15 - BATTERY, CPU, RAM & POWER MONITOR`
 
-### 🎛️ Partitioned Display Views (Switch Live on the Fly!)
-When running the Live Monitor, you can tap keys **1 through 6** to switch views instantly in real-time:
-1. **[1] Full All-in-One Dashboard:** Everything combined — battery health, wattage, GPU/CPU/Screen split, and parallel Task Manager process table.
-2. **[2] Battery & Power Focus:** Deep battery health (true calibrated charge, cell wear level %, health grade, cycle life bar 31/500, pack voltage, and 4-hour target budget).
-3. **[3] CPU & Processor Focus:** Core configuration, clock speeds, live CPU load %, package wattage, and top 10 CPU processes.
-4. **[4] RAM & Memory Focus:** Physical memory allocation %, used vs available RAM, memory load bar, and top 10 memory-hungry apps.
-5. **[5] NVMe SSD & Storage Focus:** Drive model, health, live read/write speed (MB/s), active disk time %, and low-power APST storage wattage.
-6. **[6] Task Manager Process Table:** Full 14-process parallel table showing Process Name, PID, CPU %, RAM MB, RAM %, Disk KB/s, and GPU status.
-
-### ⚡ Motionless (Zero-Flicker) In-Place Display & Rate Controls
-The Live Monitor features a **motionless in-place rendering engine** (no screen blanking, clearing, or strobing). The borders and labels remain perfectly still while numbers update dynamically:
-* **`[F]` Fast Rate:** Sets refresh rate to **0.5s** (sub-second high-precision updates).
-* **`[S]` Standard Rate:** Sets refresh rate to **1.0s** (normal cadence).
-* **`[+]` / `[-]`:** Fine-tune refresh rate up or down in 0.25s increments.
-* **`[1-6]`:** Instantly switch partition focus without quitting.
-* **`[Q]`:** Clean exit restoring cursor state.
+### 🎛️ Three Flexible Interfaces (Terminal, Web, & Native Console)
+**ubat** now supports three distinct interface layers:
+1. **🌈 Rich Animated Terminal UI (Python & Rich Engine):** Cyberpunk neon styling, smooth ANSI animations, multi-core visualizers, live GPU wattage & interactive hotkeys.
+2. **🌐 Modern Web & App Dashboard (HTML + CSS + JS):** Futuristic dark-mode control center with glowing circular battery SVG dials, real-time Canvas charts, and Task Manager process manager.
+3. **⚡ Native Motionless Console Monitor (PowerShell):** Zero-dependency, flicker-free in-place console monitor with 6 partition views.
 
 ---
 
@@ -36,12 +25,23 @@ The Live Monitor features a **motionless in-place rendering engine** (no screen 
 ```text
 ubat/
 │
-├── ubat.bat                      # 🎯 Master Interactive Menu Launcher (Options 1 - 9)
+├── ubat.bat                      # 🎯 Master Interactive Menu Launcher (Options 1 - 0)
+├── Run-TUI.bat                   # 🌈 Quick Launch: Rich Animated Python Terminal UI
+├── Launch-Web-Dashboard.bat      # 🌐 Quick Launch: Modern Web & App Dashboard in browser
 ├── Run-Live-Monitor.bat          # 🚀 Quick Launch: Partitioned live telemetry dashboard
 ├── Optimize-Laptop.bat           # ⚡ Quick Launch: Auto-profile hardware & optimize power plan
 ├── Start-Test-Logger.bat         # ⏺️ Quick Launch: Start background drain test recorder
 ├── Stop-Test-Logger.bat          # ⏹️ Quick Launch: Stop background drain test recorder
 ├── Generate-Report.bat           # 📊 Quick Launch: Instant statistical analysis & summary
+│
+├── tui/                          # 🌈 Rich Animated Terminal Interface (Python)
+│   └── ubat_tui.py               # Neon dashboard with live animations, GPU stats & process killer
+│
+├── web/                          # 🌐 Modern Web & App Dashboard (HTML / CSS / JS / Python)
+│   ├── index.html                # Cyberpunk glassmorphic control center
+│   ├── style.css                 # Obsidian dark theme, glowing SVG gauges & animations
+│   ├── app.js                    # Live telemetry poller, Canvas charts & process filter
+│   └── server.py                 # Zero-dependency local telemetry API server (port 5050)
 │
 ├── core/                         # 🧠 Core Hardware Profiling Engine
 │   ├── HardwareProfile.ps1       # Auto-detects OEM, CPU, GPUs, Battery Design & Live Metrics

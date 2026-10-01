@@ -80,7 +80,7 @@ function Get-LiveMetrics {
     try { $status = Get-CimInstance -Namespace root/wmi -ClassName BatteryStatus -ErrorAction SilentlyContinue } catch {}
     try { $batt = Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinue } catch {}
     try { $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction SilentlyContinue } catch {}
-    try { $cpu = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1 } catch {}
+    try { $cpu = Get-CimInstance -ClassName Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1 } catch {}
 
     $powerOnline = if ($status) { $status.PowerOnline } else { $true }
     $remainingMwh = if ($status) { $status.RemainingCapacity } else { 0 }

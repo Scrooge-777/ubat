@@ -65,15 +65,17 @@ function Write-LineClean {
 }
 
 $mainOptions = @(
-    [PSCustomObject]@{ Key = "1"; Title = "Launch Live Monitor";         Desc = "Flicker-free live wattage, power breakdown & process table" }
-    [PSCustomObject]@{ Key = "2"; Title = "Battery Health Model";        Desc = "Calibrated health %, cycle life, degradation grade & pack balance" }
-    [PSCustomObject]@{ Key = "3"; Title = "Optimize Laptop Battery";     Desc = "Safe CPU boost capping (99%), PCIe ASPM & OEM guidance" }
-    [PSCustomObject]@{ Key = "4"; Title = "Start Background Logger";     Desc = "30s silent crash-proof session recording into logs/" }
-    [PSCustomObject]@{ Key = "5"; Title = "Stop Background Logger";      Desc = "Terminate active background recording daemon" }
-    [PSCustomObject]@{ Key = "6"; Title = "Generate Test Report";        Desc = "Statistical analysis, average Watts, battery drop & Markdown export" }
-    [PSCustomObject]@{ Key = "7"; Title = "Process Manager & Killer";    Desc = "Task Manager parallel table & interactive PID killer" }
-    [PSCustomObject]@{ Key = "8"; Title = "NVMe SSD Health & Speed";    Desc = "Storage throughput (MB/s), active disk %, drive health & APST draw" }
-    [PSCustomObject]@{ Key = "9"; Title = "Open Logs Folder";            Desc = "Open ubat/logs/ folder in Windows File Explorer" }
+    [PSCustomObject]@{ Key = "1"; Title = "Rich Animated Terminal UI";   Desc = "Python & Rich engine with neon animations, multi-core bars & GPU stats" }
+    [PSCustomObject]@{ Key = "2"; Title = "Modern Web & App Dashboard";  Desc = "HTML/JS/CSS cyber dashboard with glowing gauges, charts & process killer" }
+    [PSCustomObject]@{ Key = "3"; Title = "Native Motionless Monitor";    Desc = "PowerShell 6-partition zero-flicker live console monitor" }
+    [PSCustomObject]@{ Key = "4"; Title = "Battery Health Model";        Desc = "Calibrated health %, cycle life, degradation grade & pack balance" }
+    [PSCustomObject]@{ Key = "5"; Title = "Optimize Laptop Battery";     Desc = "Safe CPU boost capping (99%), PCIe ASPM & OEM guidance" }
+    [PSCustomObject]@{ Key = "6"; Title = "Process Manager & Killer";    Desc = "Task Manager parallel table & interactive PID killer" }
+    [PSCustomObject]@{ Key = "7"; Title = "NVMe SSD Health & Speed";    Desc = "Storage throughput (MB/s), active disk %, drive health & APST draw" }
+    [PSCustomObject]@{ Key = "8"; Title = "Start Background Logger";     Desc = "30s silent crash-proof session recording into logs/" }
+    [PSCustomObject]@{ Key = "9"; Title = "Stop Background Logger";      Desc = "Terminate active background recording daemon" }
+    [PSCustomObject]@{ Key = "A"; Title = "Generate Test Report";        Desc = "Statistical analysis, average Watts, battery drop & Markdown export" }
+    [PSCustomObject]@{ Key = "L"; Title = "Open Logs Folder";            Desc = "Open ubat/logs/ folder in Windows File Explorer" }
     [PSCustomObject]@{ Key = "0"; Title = "Exit";                        Desc = "Exit ubat toolkit" }
 )
 
@@ -153,9 +155,12 @@ while ($true) {
                 if ($ch -eq 'q' -or $ch -eq 'Q') {
                     $chosenKey = "0"
                     $exitMenu = $true
-                } elseif ($ch -match '^[0-9]$') {
-                    $chosenKey = $ch.ToString()
-                    $exitMenu = $true
+                } elseif ($ch -match '^[0-9a-zA-Z]$') {
+                    $matchedOpt = $mainOptions | Where-Object { $_.Key -eq $ch.ToString().ToUpper() }
+                    if ($matchedOpt) {
+                        $chosenKey = $matchedOpt.Key
+                        $exitMenu = $true
+                    }
                 }
             }
         }
@@ -166,20 +171,43 @@ while ($true) {
 
     switch ($chosenKey) {
         "1" {
-            # Live Monitor with arrow-key partition menu
-            & "$ScriptDir\monitor\LiveMonitor.ps1" -InitialView "menu"
+            # Python Rich Animated TUI
+            $tuiPath = Join-Path $ScriptDir "tui\ubat_tui.py"
+            python $tuiPath
         }
         "2" {
+            # Modern Web & App Dashboard (HTML/JS/CSS)
+            $webServer = Join-Path $ScriptDir "web\server.py"
+            Write-Host "Starting UBAT Web Telemetry Dashboard..." -ForegroundColor Cyan
+            Start-Process python -ArgumentList "`"$webServer`"" -WindowStyle Minimized
+            Start-Sleep -Seconds 1
+            Start-Process "http://localhost:5050"
+            Write-Host "[OK] Web Dashboard launched in your default browser at http://localhost:5050" -ForegroundColor Green
+            Start-Sleep -Seconds 2
+        }
+        "3" {
+            # Native PowerShell Live Monitor with arrow-key partition menu
+            & "$ScriptDir\monitor\LiveMonitor.ps1" -InitialView "menu"
+        }
+        "4" {
             & "$ScriptDir\core\BatteryHealthModel.ps1"
             Write-Host "`nPress any key to return to menu..." -ForegroundColor DarkGray
             [Console]::ReadKey($true) | Out-Null
         }
-        "3" {
+        "5" {
             & "$ScriptDir\optimizer\PowerOptimizer.ps1"
             Write-Host "`nPress any key to return to menu..." -ForegroundColor DarkGray
             [Console]::ReadKey($true) | Out-Null
         }
-        "4" {
+        "6" {
+            & "$ScriptDir\diagnostics\ProcessManager.ps1"
+        }
+        "7" {
+            & "$ScriptDir\diagnostics\SsdDiagnostics.ps1"
+            Write-Host "`nPress any key to return to menu..." -ForegroundColor DarkGray
+            [Console]::ReadKey($true) | Out-Null
+        }
+        "8" {
             Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$ScriptDir\logger\BackgroundLogger.ps1`""
             Write-Host "================================================================================" -ForegroundColor Cyan
             Write-Host " [OK] Background Logger started silently in background." -ForegroundColor Green
@@ -187,25 +215,17 @@ while ($true) {
             Write-Host "================================================================================" -ForegroundColor Cyan
             Start-Sleep -Seconds 2
         }
-        "5" {
+        "9" {
             & "$ScriptDir\logger\StopLogger.ps1"
             Write-Host "`nPress any key to return to menu..." -ForegroundColor DarkGray
             [Console]::ReadKey($true) | Out-Null
         }
-        "6" {
+        "A" {
             & "$ScriptDir\analyzer\LogAnalyzer.ps1"
             Write-Host "`nPress any key to return to menu..." -ForegroundColor DarkGray
             [Console]::ReadKey($true) | Out-Null
         }
-        "7" {
-            & "$ScriptDir\diagnostics\ProcessManager.ps1"
-        }
-        "8" {
-            & "$ScriptDir\diagnostics\SsdDiagnostics.ps1"
-            Write-Host "`nPress any key to return to menu..." -ForegroundColor DarkGray
-            [Console]::ReadKey($true) | Out-Null
-        }
-        "9" {
+        "L" {
             $logsPath = Join-Path $ScriptDir "logs"
             if (-not (Test-Path $logsPath)) { New-Item -ItemType Directory -Path $logsPath -Force | Out-Null }
             Start-Process explorer.exe -ArgumentList $logsPath

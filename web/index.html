@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UBAT - Universal Battery & Hardware Telemetry Center</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- Top Cyberpunk Navigation Bar -->
+    <header class="navbar">
+      <div class="nav-brand">
+        <div class="brand-logo">
+          <span class="logo-icon">⚡</span>
+        </div>
+        <div class="brand-text">
+          <div class="brand-title">UBAT <span>PRO</span></div>
+          <div class="brand-subtitle" id="laptop-model-badge">HP OMEN GAMING LAPTOP 16</div>
+        </div>
+      </div>
+
+      <div class="nav-center">
+        <div class="status-pill active">
+          <span class="pulse-dot"></span>
+          <span id="system-status-text">LIVE TELEMETRY STREAM</span>
+        </div>
+      </div>
+
+      <div class="nav-actions">
+        <div class="telemetry-speed">
+          <span class="label">REFRESH:</span>
+          <span class="value" id="refresh-rate-badge">1.0s</span>
+        </div>
+        <button class="btn btn-outline" id="theme-toggle" title="Toggle Visual Mode">🌙 DARK</button>
+        <button class="btn btn-primary" id="btn-manual-refresh">⟳ SYNC</button>
+      </div>
+    </header>
+
+    <!-- Main Dashboard Grid -->
+    <main class="dashboard-main">
+
+      <!-- SECTION 1: HERO BATTERY & POWER CENTER -->
+      <section class="hero-battery-section">
+        
+        <!-- Big Circular Battery Gauge Card -->
+        <div class="glass-card hero-battery-card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="icon">🔋</span>
+              <h3>BATTERY PACK DYNAMICS</h3>
+            </div>
+            <div class="badge" id="battery-power-badge">AC CONNECTED</div>
+          </div>
+
+          <div class="battery-visual-container">
+            <div class="circular-gauge-wrapper">
+              <svg class="circular-gauge" viewBox="0 0 200 200">
+                <circle class="gauge-bg" cx="100" cy="100" r="82" />
+                <circle class="gauge-progress" id="battery-circle-bar" cx="100" cy="100" r="82" />
+              </svg>
+              <div class="gauge-center-content">
+                <span class="gauge-icon" id="battery-state-icon">⚡</span>
+                <span class="gauge-percentage" id="battery-pct-val">--%</span>
+                <span class="gauge-status-sub" id="battery-status-sub">PLUGGED IN</span>
+              </div>
+            </div>
+
+            <div class="battery-hero-details">
+              <div class="metric-block">
+                <span class="label">LIVE DRAIN / CHARGE RATE</span>
+                <div class="metric-value-row">
+                  <span class="value highlight-neon" id="battery-wattage-val">0.00</span>
+                  <span class="unit">WATTS</span>
+                </div>
+              </div>
+
+              <div class="metric-block">
+                <span class="label">ESTIMATED RUNTIME</span>
+                <div class="metric-value-row">
+                  <span class="value" id="battery-time-val">AC Powered</span>
+                </div>
+              </div>
+
+              <div class="metric-block">
+                <span class="label">HEALTH RATING</span>
+                <div class="metric-value-row">
+                  <span class="badge badge-success" id="battery-grade-badge">GRADE A</span>
+                  <span class="sub-label">Wear: <b id="battery-wear-val">3.5%</b></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="battery-footer-bar">
+            <div class="cap-metric">
+              <span>Full Capacity:</span> <b id="battery-full-mwh">80,122 mWh</b>
+            </div>
+            <div class="cap-metric">
+              <span>Design Limit:</span> <b id="battery-design-mwh">83,028 mWh</b>
+            </div>
+            <div class="cap-metric">
+              <span>Remaining:</span> <b id="battery-remaining-mwh">-- mWh</b>
+            </div>
+          </div>
+        </div>
+
+        <!-- Power Profile Control Deck Card -->
+        <div class="glass-card power-deck-card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="icon">⚙️</span>
+              <h3>POWER MODES & PROFILES</h3>
+            </div>
+          </div>
+
+          <p class="deck-desc">Select dynamic hardware governor profile for your laptop:</p>
+
+          <div class="profile-buttons-grid">
+            <button class="profile-btn active" data-profile="balanced">
+              <div class="p-icon">⚖️</div>
+              <div class="p-info">
+                <div class="p-title">BALANCED</div>
+                <div class="p-sub">Standard everyday stability</div>
+              </div>
+            </button>
+
+            <button class="profile-btn" data-profile="eco">
+              <div class="p-icon">🍃</div>
+              <div class="p-info">
+                <div class="p-title">ULTRA-ECO</div>
+                <div class="p-sub">Max runtime, throttled drain</div>
+              </div>
+            </button>
+
+            <button class="profile-btn" data-profile="performance">
+              <div class="p-icon">🚀</div>
+              <div class="p-info">
+                <div class="p-title">PERFORMANCE</div>
+                <div class="p-sub">High core boost & active cooling</div>
+              </div>
+            </button>
+
+            <button class="profile-btn" data-profile="gaming">
+              <div class="p-icon">🎮</div>
+              <div class="p-info">
+                <div class="p-title">OMEN GAMING</div>
+                <div class="p-sub">Full dGPU & CPU TDP allocation</div>
+              </div>
+            </button>
+          </div>
+
+          <div class="deck-stability-checklist">
+            <div class="check-item"><span class="check-dot green"></span> PCIe Native ASPM: <b>Hardware Controlled</b></div>
+            <div class="check-item"><span class="check-dot green"></span> Windows Fast Startup: <b>Clean Boot (Bypassed)</b></div>
+            <div class="check-item"><span class="check-dot green"></span> NVMe SSD Sleep Idle: <b>Protected (WHEA 17 Safe)</b></div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- SECTION 2: HARDWARE GAUGES (CPU, RAM, GPU, SSD) -->
+      <section class="hardware-grid">
+        
+        <!-- CPU Card with Live Chart -->
+        <div class="glass-card hardware-card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="icon">⚡</span>
+              <h4>CPU LOAD & CORES</h4>
+            </div>
+            <span class="badge" id="cpu-load-badge">--%</span>
+          </div>
+          <div class="card-body">
+            <div class="gauge-row">
+              <div class="main-gauge-number" id="cpu-pct-display">0%</div>
+              <div class="sub-info">
+                <div id="cpu-name-display">Intel Core Processor</div>
+                <div class="dim" id="cpu-cores-display">16 Cores / 24 Threads</div>
+              </div>
+            </div>
+            
+            <!-- Real-time Canvas Sparkline -->
+            <div class="canvas-container">
+              <canvas id="cpu-sparkline-canvas" width="300" height="70"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- RAM Memory Card -->
+        <div class="glass-card hardware-card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="icon">🧠</span>
+              <h4>MEMORY ALLOCATION</h4>
+            </div>
+            <span class="badge" id="ram-pct-badge">--%</span>
+          </div>
+          <div class="card-body">
+            <div class="gauge-row">
+              <div class="main-gauge-number" id="ram-pct-display">0%</div>
+              <div class="sub-info">
+                <div><b id="ram-used-display">-- GB</b> USED</div>
+                <div class="dim">OF <span id="ram-total-display">16.0 GB</span> TOTAL</div>
+              </div>
+            </div>
+            <div class="progress-bar-container">
+              <div class="progress-fill" id="ram-progress-fill" style="width: 0%"></div>
+            </div>
+            <div class="card-sub-stats">
+              <span>Cached: <b>Normal</b></span>
+              <span>Pressure: <b id="ram-pressure-text">Optimal</b></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- NVIDIA Dedicated GPU Card -->
+        <div class="glass-card hardware-card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="icon">🎮</span>
+              <h4>NVIDIA GPU</h4>
+            </div>
+            <span class="badge badge-nvidia" id="gpu-util-badge">0%</span>
+          </div>
+          <div class="card-body">
+            <div class="gpu-model-name" id="gpu-name-display">Detecting GPU...</div>
+            <div class="gpu-stats-grid">
+              <div class="gpu-stat-box">
+                <span class="label">TEMP</span>
+                <span class="value" id="gpu-temp-display">--°C</span>
+              </div>
+              <div class="gpu-stat-box">
+                <span class="label">LOAD</span>
+                <span class="value highlight-cyan" id="gpu-load-display">0%</span>
+              </div>
+              <div class="gpu-stat-box">
+                <span class="label">DRAW</span>
+                <span class="value highlight-neon" id="gpu-power-display">0.0 W</span>
+              </div>
+            </div>
+            <div class="gpu-status-note" id="gpu-status-note">Dynamic Boost Active</div>
+          </div>
+        </div>
+
+        <!-- NVMe High-Speed SSD Card -->
+        <div class="glass-card hardware-card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="icon">💾</span>
+              <h4>NVMe SSD I/O</h4>
+            </div>
+            <span class="badge" id="ssd-status-badge">ACTIVE</span>
+          </div>
+          <div class="card-body">
+            <div class="disk-io-container">
+              <div class="disk-io-row">
+                <div class="io-type"><span class="io-led read"></span> READ</div>
+                <div class="io-speed"><b id="disk-read-speed">0.0</b> MB/s</div>
+              </div>
+              <div class="disk-io-row">
+                <div class="io-type"><span class="io-led write"></span> WRITE</div>
+                <div class="io-speed"><b id="disk-write-speed">0.0</b> MB/s</div>
+              </div>
+            </div>
+            <div class="progress-bar-container">
+              <div class="progress-fill disk-fill" id="disk-progress-fill" style="width: 15%"></div>
+            </div>
+            <div class="card-sub-stats">
+              <span>PCIe Bus: <b>Gen4 x4</b></span>
+              <span>Driver: <b>NVMe Standard</b></span>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- SECTION 3: TASK MANAGER LIVE PROCESS MATRIX -->
+      <section class="process-section">
+        <div class="glass-card process-table-card">
+          <div class="card-header process-header">
+            <div class="header-left">
+              <div class="card-title">
+                <span class="icon">📊</span>
+                <h3>LIVE TASK MANAGER PROCESS MATRIX</h3>
+              </div>
+              <span class="badge" id="total-procs-badge">SCANNING</span>
+            </div>
+            
+            <div class="header-controls">
+              <div class="search-box">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="proc-search-input" placeholder="Search processes (e.g. nvidia, chrome, steam)..." />
+              </div>
+              <div class="filter-chips">
+                <button class="chip active" data-filter="all">All</button>
+                <button class="chip" data-filter="nvidia">NVIDIA Only</button>
+                <button class="chip" data-filter="high-cpu">CPU > 3%</button>
+                <button class="chip" data-filter="high-ram">RAM > 400MB</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="table-container">
+            <table class="modern-table">
+              <thead>
+                <tr>
+                  <th width="90">PID</th>
+                  <th>APPLICATION NAME</th>
+                  <th width="140" class="text-right">CPU LOAD</th>
+                  <th width="160" class="text-right">RAM USAGE</th>
+                  <th width="150" class="text-center">DRAIN IMPACT</th>
+                  <th width="140" class="text-center">ACTION</th>
+                </tr>
+              </thead>
+              <tbody id="process-table-body">
+                <tr>
+                  <td colspan="6" class="text-center loading-row">
+                    <span class="spinner"></span> Connecting to live telemetry engine...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Modal for Process Kill Confirmation -->
+    <div class="modal-overlay" id="kill-modal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <span class="warn-icon">⚠️</span>
+          <h4>CONFIRM PROCESS TERMINATION</h4>
+        </div>
+        <div class="modal-body">
+          <p>Are you sure you want to kill the following process to recover battery and hardware resources?</p>
+          <div class="proc-details-box">
+            <div>Application: <b id="modal-proc-name">--</b></div>
+            <div>PID: <b id="modal-proc-pid">--</b></div>
+            <div>CPU Usage: <b id="modal-proc-cpu">--%</b></div>
+            <div>Memory: <b id="modal-proc-ram">-- MB</b></div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-outline" id="modal-btn-cancel">CANCEL</button>
+          <button class="btn btn-danger" id="modal-btn-confirm">TERMINATE PROCESS</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notification Toast System -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- Footer Status Bar -->
+    <footer class="app-footer">
+      <div>UBAT Pro Hardware Architecture &copy; 2026 Scrooge-777 | Universal Laptop Optimizer</div>
+      <div class="footer-links">
+        <a href="https://github.com/Scrooge-777/ubat" target="_blank">GitHub Repository</a>
+        <span>•</span>
+        <span>Zero-Flicker Native API</span>
+      </div>
+    </footer>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
