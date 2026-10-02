@@ -6,7 +6,7 @@
     and degradation wear levels, and optimizes SSD file systems.
 #>
 
-Clear-Host
+try { Clear-Host } catch { }
 $w = 88
 try {
     $w = [Console]::WindowWidth - 1

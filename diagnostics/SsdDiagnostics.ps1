@@ -13,7 +13,7 @@ try {
     if ($w -lt 80) { $w = 88 }
 } catch { $w = 88 }
 
-Clear-Host
+try { Clear-Host } catch { }
 Write-Host ("=" * $w) -ForegroundColor Cyan
 Write-Host (" " * [math]::Max(0, [math]::Floor(($w - 36) / 2)) + "STORAGE & NVME PARTITION DIAGNOSTICS") -ForegroundColor Yellow
 Write-Host ("=" * $w) -ForegroundColor Cyan
