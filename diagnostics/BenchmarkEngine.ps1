@@ -272,19 +272,18 @@ function Test-ManualStress {
         default { "COMBINED FULL-SYSTEM CONTINUOUS BURN-IN (CPU + GPU + RAM)" }
     }
 
-    Write-Host "================================================================================" -ForegroundColor Cyan
-    Write-Host "         MANUAL START / STOP HARDWARE STRESS TEST" -ForegroundColor Yellow
-    Write-Host "         $title" -ForegroundColor White
-    Write-Host "================================================================================" -ForegroundColor Cyan
-    Write-Host " Instructions:" -ForegroundColor White
-    Write-Host "   - Press [ENTER] or [SPACE] to START stress testing." -ForegroundColor Green
-    Write-Host "   - Once running, press [SPACE], [ENTER], [Q], or [ESC] to STOP at any time." -ForegroundColor Yellow
-    Write-Host "--------------------------------------------------------------------------------" -ForegroundColor Cyan
-
     $pyEngine = Join-Path $PSScriptRoot "bench_engine.py"
     if (Test-Path $pyEngine) {
         python $pyEngine --manual $tgt
     } else {
+        Write-Host "================================================================================" -ForegroundColor Cyan
+        Write-Host "         MANUAL START / STOP HARDWARE STRESS TEST" -ForegroundColor Yellow
+        Write-Host "         $title" -ForegroundColor White
+        Write-Host "================================================================================" -ForegroundColor Cyan
+        Write-Host " Instructions:" -ForegroundColor White
+        Write-Host "   - Press [ENTER] or [SPACE] to START stress testing." -ForegroundColor Green
+        Write-Host "   - Once running, press [SPACE], [ENTER], [Q], or [ESC] to STOP at any time." -ForegroundColor Yellow
+        Write-Host "--------------------------------------------------------------------------------" -ForegroundColor Cyan
         Write-Host " Press [ENTER] or [SPACE] to start continuous CPU stress..." -ForegroundColor Green
         while ($true) {
             if ([Console]::KeyAvailable) {

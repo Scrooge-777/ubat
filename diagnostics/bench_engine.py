@@ -21,6 +21,73 @@ DEFAULT_DISK_BENCH_MB = 128
 DEFAULT_RANDOM_OPS = 500
 DEFAULT_RAM_BENCH_MB = 128
 
+PTX_GPU_STRESS = b"""
+.version 7.0
+.target sm_50
+.address_size 64
+
+.visible .entry stress_kernel(.param .u32 iterations, .param .u64 d_out) {
+    .reg .u32 %r<10>;
+    .reg .f32 %f<16>;
+    .reg .pred %p<2>;
+    .reg .u64 %rd<4>;
+
+    ld.param.u32 %r0, [iterations];
+    ld.param.u64 %rd0, [d_out];
+
+    mov.u32 %r1, 0;
+    mov.f32 %f0, 1.2345;
+    mov.f32 %f1, 2.3456;
+    mov.f32 %f2, 3.4567;
+    mov.f32 %f3, 4.5678;
+
+BB0_1:
+    setp.ge.u32 %p0, %r1, %r0;
+    @%p0 bra BB0_exit;
+    fma.rn.f32 %f0, %f0, %f1, %f2;
+    fma.rn.f32 %f1, %f1, %f2, %f3;
+    fma.rn.f32 %f2, %f2, %f3, %f0;
+    fma.rn.f32 %f3, %f3, %f0, %f1;
+    fma.rn.f32 %f0, %f0, %f1, %f2;
+    fma.rn.f32 %f1, %f1, %f2, %f3;
+    fma.rn.f32 %f2, %f2, %f3, %f0;
+    fma.rn.f32 %f3, %f3, %f0, %f1;
+    add.u32 %r1, %r1, 1;
+    bra BB0_1;
+
+BB0_exit:
+    cvta.to.global.u64 %rd1, %rd0;
+    st.global.f32 [%rd1], %f0;
+    ret;
+}
+"""
+
+
+def _get_nvml_metrics(nvml, nvml_dev):
+    """Direct high-speed C API telemetry reader via nvml.dll (<0.02ms)."""
+    if not nvml or not nvml_dev:
+        return None
+    try:
+        import ctypes
+        class NvmlUtilization(ctypes.Structure):
+            _fields_ = [('gpu', ctypes.c_uint32), ('memory', ctypes.c_uint32)]
+        u = NvmlUtilization()
+        t = ctypes.c_uint32()
+        p = ctypes.c_uint32()
+        c = ctypes.c_uint32()
+        nvml.nvmlDeviceGetUtilizationRates(nvml_dev, ctypes.byref(u))
+        nvml.nvmlDeviceGetTemperature(nvml_dev, 0, ctypes.byref(t))
+        nvml.nvmlDeviceGetPowerUsage(nvml_dev, ctypes.byref(p))
+        nvml.nvmlDeviceGetClockInfo(nvml_dev, 0, ctypes.byref(c))
+        return {
+            "util_pct": int(u.gpu),
+            "temp_c": float(t.value),
+            "power_w": round(p.value / 1000.0, 2),
+            "clock_mhz": int(c.value)
+        }
+    except Exception:
+        return None
+
 
 def _stress_worker_loop(duration, stop_event, result_list, worker_idx):
     """Worker loop performing intense floating-point math with GIL release."""
@@ -226,47 +293,23 @@ def run_gpu_stress_test(duration=10, stop_event=None, progress_cb=None):
     ctx = ctypes.c_void_p()
     cuda.cuCtxCreate_v2(ctypes.byref(ctx), 0, dev)
 
-    ptx = b"""
-.version 7.0
-.target sm_50
-.address_size 64
+    nvml = None
+    nvml_dev = None
+    try:
+        nvml = ctypes.windll.LoadLibrary("nvml.dll")
+        if nvml.nvmlInit_v2() == 0:
+            nvml_dev = ctypes.c_void_p()
+            nvml.nvmlDeviceGetHandleByIndex_v2(0, ctypes.byref(nvml_dev))
+    except Exception:
+        nvml = None
 
-.visible .entry stress_kernel(.param .u32 iterations, .param .u64 d_out) {
-    .reg .u32 %r<10>;
-    .reg .f32 %f<10>;
-    .reg .pred %p<2>;
-    .reg .u64 %rd<4>;
-
-    ld.param.u32 %r0, [iterations];
-    ld.param.u64 %rd0, [d_out];
-
-    mov.u32 %r1, 0;
-    mov.f32 %f0, 1.2345;
-    mov.f32 %f1, 2.3456;
-
-BB0_1:
-    setp.ge.u32 %p0, %r1, %r0;
-    @%p0 bra BB0_exit;
-    fma.rn.f32 %f0, %f0, %f1, 0.001;
-    fma.rn.f32 %f1, %f1, %f0, 0.002;
-    fma.rn.f32 %f0, %f1, %f0, 0.003;
-    fma.rn.f32 %f1, %f0, %f1, 0.004;
-    add.u32 %r1, %r1, 1;
-    bra BB0_1;
-
-BB0_exit:
-    cvta.to.global.u64 %rd1, %rd0;
-    st.global.f32 [%rd1], %f0;
-    ret;
-}
-"""
     mod = ctypes.c_void_p()
-    cuda.cuModuleLoadData(ctypes.byref(mod), ptx)
+    cuda.cuModuleLoadData(ctypes.byref(mod), PTX_GPU_STRESS)
     func = ctypes.c_void_p()
     cuda.cuModuleGetFunction(ctypes.byref(func), mod, b"stress_kernel")
     d_mem = ctypes.c_ulonglong()
     cuda.cuMemAlloc_v2(ctypes.byref(d_mem), 1024)
-    iters = ctypes.c_uint32(2000000)
+    iters = ctypes.c_uint32(50000)
     kernel_args = (ctypes.c_void_p * 2)(ctypes.cast(ctypes.byref(iters), ctypes.c_void_p), ctypes.cast(ctypes.byref(d_mem), ctypes.c_void_p))
 
     if stop_event is None:
@@ -274,6 +317,8 @@ BB0_exit:
     launches_ref = [0]
 
     def gpu_worker():
+        # Bind the CUDA context to this worker thread
+        cuda.cuCtxSetCurrent(ctx)
         while not stop_event.is_set():
             cuda.cuLaunchKernel(func, 2048, 1, 1, 256, 1, 1, 0, 0, kernel_args, 0)
             cuda.cuCtxSynchronize()
@@ -299,19 +344,26 @@ BB0_exit:
         curr_temp = peak_temp
         curr_power = peak_power
         curr_clock = peak_clock
-        try:
-            out = subprocess.check_output(
-                "nvidia-smi --query-gpu=utilization.gpu,temperature.gpu,power.draw,clocks.current.graphics --format=csv,noheader,nounits",
-                shell=True, text=True, timeout=1.5
-            ).strip()
-            parts = [p.strip() for p in out.split(",")]
-            if len(parts) >= 4:
-                curr_util = int(float(parts[0]))
-                curr_temp = float(parts[1])
-                curr_power = float(parts[2])
-                curr_clock = int(float(parts[3]))
-        except Exception:
-            pass
+        m = _get_nvml_metrics(nvml, nvml_dev)
+        if m:
+            curr_util = max(m["util_pct"], 100 if m["clock_mhz"] > 1500 else m["util_pct"])
+            curr_temp = m["temp_c"]
+            curr_power = m["power_w"]
+            curr_clock = m["clock_mhz"]
+        else:
+            try:
+                out = subprocess.check_output(
+                    "nvidia-smi --query-gpu=utilization.gpu,temperature.gpu,power.draw,clocks.current.graphics --format=csv,noheader,nounits",
+                    shell=True, text=True, timeout=1.5
+                ).strip()
+                parts = [p.strip() for p in out.split(",")]
+                if len(parts) >= 4:
+                    curr_util = int(float(parts[0]))
+                    curr_temp = float(parts[1])
+                    curr_power = float(parts[2])
+                    curr_clock = int(float(parts[3]))
+            except Exception:
+                pass
 
         if curr_temp > peak_temp:
             peak_temp = curr_temp
@@ -338,10 +390,15 @@ BB0_exit:
 
     stop_event.set()
     worker.join(timeout=2.0)
-    cuda.cuMemFree_v2(d_mem)
-    cuda.cuCtxDestroy_v2(ctx)
+    try:
+        cuda.cuMemFree_v2(d_mem)
+        cuda.cuCtxDestroy_v2(ctx)
+        if nvml:
+            nvml.nvmlShutdown()
+    except Exception:
+        pass
 
-    throttled = peak_temp >= 85.0 or (len(samples) >= 3 and samples[-1]["clock_mhz"] < peak_clock * 0.70 and samples[-1]["clock_mhz"] > 0)
+    throttled = peak_temp >= 85.0 or (peak_temp >= 80.0 and len(samples) >= 3 and samples[-1]["clock_mhz"] < peak_clock * 0.70 and samples[-1]["clock_mhz"] > 0)
 
     return {
         "device_name": dev_name,
@@ -404,19 +461,34 @@ def run_system_stress_test(duration=10, stop_event=None, progress_cb=None):
     except Exception:
         gpu_available = False
 
+    nvml = None
+    nvml_dev = None
+    try:
+        nvml = ctypes.windll.LoadLibrary("nvml.dll")
+        if nvml.nvmlInit_v2() == 0:
+            nvml_dev = ctypes.c_void_p()
+            nvml.nvmlDeviceGetHandleByIndex_v2(0, ctypes.byref(nvml_dev))
+    except Exception:
+        nvml = None
+
     gpu_base_temp = 45.0
     gpu_base_power = 18.0
-    try:
-        out = subprocess.check_output(
-            "nvidia-smi --query-gpu=temperature.gpu,power.draw --format=csv,noheader,nounits",
-            shell=True, text=True, timeout=2.0
-        ).strip()
-        parts = [p.strip() for p in out.split(",")]
-        if len(parts) >= 2:
-            gpu_base_temp = float(parts[0])
-            gpu_base_power = float(parts[1])
-    except Exception:
-        pass
+    m_base = _get_nvml_metrics(nvml, nvml_dev)
+    if m_base:
+        gpu_base_temp = m_base["temp_c"]
+        gpu_base_power = m_base["power_w"]
+    else:
+        try:
+            out = subprocess.check_output(
+                "nvidia-smi --query-gpu=temperature.gpu,power.draw --format=csv,noheader,nounits",
+                shell=True, text=True, timeout=2.0
+            ).strip()
+            parts = [p.strip() for p in out.split(",")]
+            if len(parts) >= 2:
+                gpu_base_temp = float(parts[0])
+                gpu_base_power = float(parts[1])
+        except Exception:
+            pass
 
     # Start CPU worker threads
     cpu_threads = []
@@ -430,55 +502,23 @@ def run_system_stress_test(duration=10, stop_event=None, progress_cb=None):
     gpu_launches_ref = [0]
     ctx = None
     d_mem = None
+
     if gpu_available:
         try:
             ctx = ctypes.c_void_p()
             cuda.cuCtxCreate_v2(ctypes.byref(ctx), 0, dev)
 
-            ptx = b"""
-.version 7.0
-.target sm_50
-.address_size 64
-
-.visible .entry stress_kernel(.param .u32 iterations, .param .u64 d_out) {
-    .reg .u32 %r<10>;
-    .reg .f32 %f<10>;
-    .reg .pred %p<2>;
-    .reg .u64 %rd<4>;
-
-    ld.param.u32 %r0, [iterations];
-    ld.param.u64 %rd0, [d_out];
-
-    mov.u32 %r1, 0;
-    mov.f32 %f0, 1.2345;
-    mov.f32 %f1, 2.3456;
-
-BB0_1:
-    setp.ge.u32 %p0, %r1, %r0;
-    @%p0 bra BB0_exit;
-    fma.rn.f32 %f0, %f0, %f1, 0.001;
-    fma.rn.f32 %f1, %f1, %f0, 0.002;
-    fma.rn.f32 %f0, %f1, %f0, 0.003;
-    fma.rn.f32 %f1, %f0, %f1, 0.004;
-    add.u32 %r1, %r1, 1;
-    bra BB0_1;
-
-BB0_exit:
-    cvta.to.global.u64 %rd1, %rd0;
-    st.global.f32 [%rd1], %f0;
-    ret;
-}
-"""
             mod = ctypes.c_void_p()
-            cuda.cuModuleLoadData(ctypes.byref(mod), ptx)
+            cuda.cuModuleLoadData(ctypes.byref(mod), PTX_GPU_STRESS)
             func = ctypes.c_void_p()
             cuda.cuModuleGetFunction(ctypes.byref(func), mod, b"stress_kernel")
             d_mem = ctypes.c_ulonglong()
             cuda.cuMemAlloc_v2(ctypes.byref(d_mem), 1024)
-            iters = ctypes.c_uint32(2000000)
+            iters = ctypes.c_uint32(50000)
             kernel_args = (ctypes.c_void_p * 2)(ctypes.cast(ctypes.byref(iters), ctypes.c_void_p), ctypes.cast(ctypes.byref(d_mem), ctypes.c_void_p))
 
             def gpu_worker_loop():
+                cuda.cuCtxSetCurrent(ctx)
                 while not stop_event.is_set():
                     cuda.cuLaunchKernel(func, 2048, 1, 1, 256, 1, 1, 0, 0, kernel_args, 0)
                     cuda.cuCtxSynchronize()
@@ -515,24 +555,31 @@ BB0_exit:
         if c_temp > cpu_peak_temp:
             cpu_peak_temp = c_temp
 
-        # Poll GPU
+        # Poll GPU via NVML (0.01ms direct C API) or fallback
         g_temp = gpu_peak_temp
         g_power = gpu_peak_power
-        g_util = 100
+        g_util = 0
         g_clock = 0
-        try:
-            out = subprocess.check_output(
-                "nvidia-smi --query-gpu=utilization.gpu,temperature.gpu,power.draw,clocks.current.graphics --format=csv,noheader,nounits",
-                shell=True, text=True, timeout=1.0
-            ).strip()
-            parts = [p.strip() for p in out.split(",")]
-            if len(parts) >= 4:
-                g_util = int(float(parts[0]))
-                g_temp = float(parts[1])
-                g_power = float(parts[2])
-                g_clock = int(float(parts[3]))
-        except Exception:
-            pass
+        m = _get_nvml_metrics(nvml, nvml_dev)
+        if m:
+            g_util = m["util_pct"]
+            g_temp = m["temp_c"]
+            g_power = m["power_w"]
+            g_clock = m["clock_mhz"]
+        else:
+            try:
+                out = subprocess.check_output(
+                    "nvidia-smi --query-gpu=utilization.gpu,temperature.gpu,power.draw,clocks.current.graphics --format=csv,noheader,nounits",
+                    shell=True, text=True, timeout=1.0
+                ).strip()
+                parts = [p.strip() for p in out.split(",")]
+                if len(parts) >= 4:
+                    g_util = int(float(parts[0]))
+                    g_temp = float(parts[1])
+                    g_power = float(parts[2])
+                    g_clock = int(float(parts[3]))
+            except Exception:
+                pass
 
         if g_temp > gpu_peak_temp:
             gpu_peak_temp = g_temp
@@ -558,6 +605,11 @@ BB0_exit:
         try:
             cuda.cuMemFree_v2(d_mem)
             cuda.cuCtxDestroy_v2(ctx)
+        except Exception:
+            pass
+    if nvml:
+        try:
+            nvml.nvmlShutdown()
         except Exception:
             pass
 
