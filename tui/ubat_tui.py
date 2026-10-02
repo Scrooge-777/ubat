@@ -1234,13 +1234,14 @@ def run_interactive_benchmark(live):
     console.print("  [bold yellow][2][/bold yellow] Multi-Core CPU Stress Test (10s Sustained Thermal & Throttle Load)")
     console.print("  [bold yellow][3][/bold yellow] Dedicated GPU Hardware Stress Test (10s at 100% Load & 2.7+ GHz)")
     console.print("  [bold yellow][4][/bold yellow] Combined Full-System Burn-In Stress Test (CPU + GPU + RAM)")
-    console.print("  [bold yellow][5][/bold yellow] CPU Computational Benchmark (Single-Thread & Multi-Thread Score)")
-    console.print("  [bold yellow][6][/bold yellow] DDR5 RAM Memory Bandwidth Benchmark (Sequential Read GB/s)")
-    console.print("  [bold yellow][7][/bold yellow] All-in-One Full System Hardware Benchmark (Storage + RAM + CPU + GPU)")
+    console.print("  [bold yellow][5][/bold yellow] Manual Start / Stop Continuous Burn-In (Click/Press Key to Start & Stop)")
+    console.print("  [bold yellow][6][/bold yellow] CPU Computational Benchmark (Single-Thread & Multi-Thread Score)")
+    console.print("  [bold yellow][7][/bold yellow] DDR5 RAM Memory Bandwidth Benchmark (Sequential Read GB/s)")
+    console.print("  [bold yellow][8][/bold yellow] All-in-One Full System Hardware Benchmark (Storage + RAM + CPU + GPU)")
     console.print("  [bold yellow][0][/bold yellow] Return to Dashboard")
     console.print("[bold cyan]=============================================================================[/bold cyan]")
 
-    choice = console.input("\n[bold green]Select benchmark option [0-7]: [/bold green]").strip()
+    choice = console.input("\n[bold green]Select benchmark option [0-8]: [/bold green]").strip()
 
     if choice == "1":
         console.print("\n[bold cyan]Executing NVMe Storage Read Benchmark (128MB payload, 500 random seeks)...[/bold cyan]")
@@ -1373,6 +1374,140 @@ def run_interactive_benchmark(live):
         console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
 
     elif choice == "5":
+        console.print("\n[bold cyan]=============================================================================[/bold cyan]")
+        console.print("[bold white]            MANUAL START / STOP HARDWARE STRESS TEST[/bold white]")
+        console.print("[bold cyan]=============================================================================[/bold cyan]")
+        console.print("  Select target component for continuous burn-in:")
+        console.print("  [bold yellow][1][/bold yellow] Combined Full-System Burn-In (CPU + Dedicated GPU + RAM)")
+        console.print("  [bold yellow][2][/bold yellow] Dedicated GPU Hardware Stress (RTX 5050 CUDA 100% @ 2.7+ GHz)")
+        console.print("  [bold yellow][3][/bold yellow] Multi-Core CPU Thermal Stress (All Logical Processor Threads)")
+        console.print("  [bold yellow][0][/bold yellow] Cancel")
+        console.print("[bold cyan]=============================================================================[/bold cyan]")
+        sub = console.input("\n[bold green]Select target [0-3]: [/bold green]").strip()
+        if sub == "1":
+            target = "system"
+            target_label = "Combined Full-System Burn-In"
+        elif sub == "2":
+            target = "gpu"
+            target_label = "Dedicated GPU Hardware Stress"
+        elif sub == "3":
+            target = "cpu"
+            target_label = "Multi-Core CPU Stress"
+        else:
+            live.start()
+            return
+
+        console.print(f"\n[bold yellow]Target: {target_label}[/bold yellow]")
+        console.print("[bold white]  - Press [bold green][ENTER][/bold green] or [bold green][SPACE][/bold green] to START stress testing.[/bold white]")
+        console.print("[bold white]  - Once running, press [bold red][SPACE][/bold red], [bold red][ENTER][/bold red], [bold red][Q][/bold red], or [bold red][ESC][/bold red] to STOP at any time.[/bold white]")
+        console.print("[dim]  Waiting for start trigger...[/dim]\n")
+
+        import msvcrt
+        while True:
+            if msvcrt.kbhit():
+                k = msvcrt.getch()
+                if k in [b' ', b'\r', b'\n']:
+                    break
+                elif k in [b'q', b'Q', b'\x1b', b'0']:
+                    console.print("[bold red]Stress test cancelled.[/bold red]")
+                    STATUS_MESSAGE = "Manual stress test cancelled."
+                    STATUS_TIME = time.time()
+                    time.sleep(1)
+                    live.start()
+                    return
+            time.sleep(0.05)
+
+        console.print("[bold green]>>> STRESS TEST ACTIVE - LOAD APPLIED <<<[/bold green]\n")
+
+        def on_manual_progress(elapsed, total, *p_args):
+            if msvcrt.kbhit():
+                k = msvcrt.getch()
+                if k in [b' ', b'\r', b'\n', b'q', b'Q', b'\x1b']:
+                    return True
+
+            mm = int(elapsed) // 60
+            ss = int(elapsed) % 60
+            if target == "cpu":
+                cur_t = p_args[0] if len(p_args) > 0 else 0.0
+                cur_f = p_args[1] if len(p_args) > 1 else 0
+                sys.stdout.write(f"\r  [RUNNING {mm:02d}:{ss:02d}] CPU: {cur_t:.1f} C | Freq: {cur_f} MHz | [SPACE / Q] to STOP   ")
+            elif target == "gpu":
+                cur_t = p_args[0] if len(p_args) > 0 else 0.0
+                cur_p = p_args[1] if len(p_args) > 1 else 0.0
+                cur_u = p_args[2] if len(p_args) > 2 else 0
+                cur_c = p_args[3] if len(p_args) > 3 else 0
+                sys.stdout.write(f"\r  [RUNNING {mm:02d}:{ss:02d}] GPU: {cur_t:.1f} C | Pwr: {cur_p:.1f} W | Util: {cur_u}% | Clk: {cur_c} MHz | [SPACE / Q] to STOP   ")
+            else:
+                c_t = p_args[0] if len(p_args) > 0 else 0.0
+                g_t = p_args[1] if len(p_args) > 1 else 0.0
+                g_p = p_args[2] if len(p_args) > 1 else 0.0
+                g_u = p_args[3] if len(p_args) > 3 else 0
+                sys.stdout.write(f"\r  [RUNNING {mm:02d}:{ss:02d}] CPU: {c_t:.1f} C | GPU: {g_t:.1f} C ({g_p:.1f} W, {g_u}%) | [SPACE / Q] to STOP   ")
+            sys.stdout.flush()
+            return False
+
+        res = bench_engine.run_manual_stress_test(test_type=target, progress_cb=on_manual_progress)
+        print()
+
+        if res and res.get("status") == "PASS":
+            dur_s = res.get("duration_s", 0)
+            console.print(f"\n[bold green][PASS] Manual Stress Test Completed ({dur_s}s sustained):[/bold green]")
+            if target == "cpu":
+                TELEMETRY["benchmarks"]["stress_peak_c"] = res["peak_temp_c"]
+                TELEMETRY["benchmarks"]["stress_delta_c"] = res["temp_delta_c"]
+                TELEMETRY["benchmarks"]["stress_ops"] = res["total_ops"]
+                TELEMETRY["benchmarks"]["stress_throttled"] = res["thermal_throttling"]
+                throt_str = "[bold red]THROTTLED[/bold red]" if res["thermal_throttling"] else "[bold green]NOMINAL[/bold green]"
+                console.print(f"  - Total Mathematical Ops : [bold white]{res['total_ops']:,}[/bold white] ({res['ops_per_sec']:,} ops/sec)")
+                console.print(f"  - Baseline Temperature   : [bold white]{res['base_temp_c']} C[/bold white]")
+                console.print(f"  - Peak Temperature       : [bold white]{res['peak_temp_c']} C[/bold white] (Rise: +{res['temp_delta_c']} C)")
+                console.print(f"  - Final Clock Frequency  : [bold white]{res['final_freq_mhz']} MHz[/bold white]")
+                console.print(f"  - Throttle State         : {throt_str}")
+                STATUS_MESSAGE = f"CPU Manual Stress: Peak {res['peak_temp_c']} C (+{res['temp_delta_c']} C) over {dur_s}s"
+            elif target == "gpu":
+                TELEMETRY["benchmarks"]["gpu_stress_peak_c"] = res["peak_temp_c"]
+                TELEMETRY["benchmarks"]["gpu_stress_delta_c"] = res["temp_delta_c"]
+                TELEMETRY["benchmarks"]["gpu_stress_power_w"] = res["peak_power_w"]
+                TELEMETRY["benchmarks"]["gpu_stress_util_pct"] = res["peak_util_pct"]
+                TELEMETRY["benchmarks"]["gpu_stress_clock_mhz"] = res["peak_clock_mhz"]
+                TELEMETRY["benchmarks"]["gpu_stress_throttled"] = res["thermal_throttling"]
+                throt_badge = "[bold red]THROTTLED[/bold red]" if res["thermal_throttling"] else "[bold green]NOMINAL[/bold green]"
+                console.print(f"  - Target Device          : [bold white]{res['device_name']}[/bold white]")
+                console.print(f"  - Peak Temperature       : [bold white]{res['peak_temp_c']} C[/bold white] (+{res['temp_delta_c']} C)")
+                console.print(f"  - Peak Graphics Power    : [bold white]{res['peak_power_w']} W[/bold white]")
+                console.print(f"  - Peak Clock Speed       : [bold white]{res['peak_clock_mhz']} MHz[/bold white]")
+                console.print(f"  - CUDA Kernel Executions : [bold white]{res['kernel_launches']:,}[/bold white]")
+                console.print(f"  - Throttle State         : {throt_badge}")
+                STATUS_MESSAGE = f"GPU Manual Stress: Peak {res['peak_temp_c']} C ({res['peak_power_w']} W) over {dur_s}s"
+            else:
+                TELEMETRY["benchmarks"]["stress_peak_c"] = res["cpu_peak_temp_c"]
+                TELEMETRY["benchmarks"]["stress_delta_c"] = res["cpu_temp_delta_c"]
+                TELEMETRY["benchmarks"]["stress_ops"] = res["cpu_total_ops"]
+                TELEMETRY["benchmarks"]["stress_throttled"] = res["cpu_throttled"]
+                TELEMETRY["benchmarks"]["gpu_stress_peak_c"] = res["gpu_peak_temp_c"]
+                TELEMETRY["benchmarks"]["gpu_stress_delta_c"] = res["gpu_temp_delta_c"]
+                TELEMETRY["benchmarks"]["gpu_stress_power_w"] = res["gpu_peak_power_w"]
+                TELEMETRY["benchmarks"]["gpu_stress_util_pct"] = res["gpu_peak_util_pct"]
+                TELEMETRY["benchmarks"]["gpu_stress_clock_mhz"] = res["gpu_peak_clock_mhz"]
+                TELEMETRY["benchmarks"]["gpu_stress_throttled"] = res["gpu_throttled"]
+                c_throt = "[bold red]THROTTLED[/bold red]" if res["cpu_throttled"] else "[bold green]NOMINAL[/bold green]"
+                g_throt = "[bold red]THROTTLED[/bold red]" if res["gpu_throttled"] else "[bold green]NOMINAL[/bold green]"
+                console.print(f"  - CPU Peak Temperature   : [bold white]{res['cpu_peak_temp_c']} C[/bold white] (+{res['cpu_temp_delta_c']} C) | State: {c_throt}")
+                console.print(f"  - CPU Total Operations   : [bold white]{res['cpu_total_ops']:,}[/bold white]")
+                console.print(f"  - GPU Peak Temperature   : [bold white]{res['gpu_peak_temp_c']} C[/bold white] (+{res['gpu_temp_delta_c']} C) | State: {g_throt}")
+                console.print(f"  - GPU Peak Power Draw    : [bold white]{res['gpu_peak_power_w']} W[/bold white] ({res['gpu_peak_util_pct']}% Load)")
+                console.print(f"  - GPU CUDA Launches      : [bold white]{res['gpu_launches']:,}[/bold white]")
+                STATUS_MESSAGE = f"Burn-In Manual: CPU {res['cpu_peak_temp_c']} C | GPU {res['gpu_peak_temp_c']} C ({res['gpu_peak_power_w']} W)"
+
+            TELEMETRY["benchmarks"]["last_bench_time"] = time.time()
+        else:
+            console.print("\n[bold red][FAIL] Stress Test did not complete successfully.[/bold red]")
+            STATUS_MESSAGE = "Manual Stress Test Failed."
+
+        STATUS_TIME = time.time()
+        console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
+
+    elif choice == "6":
         console.print("\n[bold cyan]Executing CPU Computational Benchmark (Single & Multi-Thread)...[/bold cyan]")
         res = bench_engine.run_cpu_benchmark(duration_seconds=3)
         TELEMETRY["benchmarks"]["cpu_st_score"] = res["single_thread_score"]
@@ -1391,7 +1526,7 @@ def run_interactive_benchmark(live):
         STATUS_TIME = time.time()
         console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
 
-    elif choice == "6":
+    elif choice == "7":
         console.print("\n[bold cyan]Executing RAM Memory Bandwidth Benchmark (128MB test block)...[/bold cyan]")
         res = bench_engine.run_ram_bandwidth_benchmark(buffer_mb=128)
         if res.get("status") == "PASS":
@@ -1409,7 +1544,7 @@ def run_interactive_benchmark(live):
         STATUS_TIME = time.time()
         console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
 
-    elif choice == "7":
+    elif choice == "8":
         console.print("\n[bold cyan]Starting All-in-One Full System Hardware Benchmark...[/bold cyan]")
 
         # 1. Storage

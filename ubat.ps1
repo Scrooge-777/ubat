@@ -449,9 +449,10 @@ while ($true) {
                 [PSCustomObject]@{ Key = "2"; Title = "Multi-Core CPU Thermal Stress Test";Desc = "Stress all CPU threads with live temperature tracking" }
                 [PSCustomObject]@{ Key = "3"; Title = "Dedicated GPU Hardware Stress Test";Desc = "Stress RTX 5050 with 524,288 CUDA threads at 100% load" }
                 [PSCustomObject]@{ Key = "4"; Title = "Combined Full-System Burn-In";     Desc = "Saturate CPU, dedicated GPU & RAM simultaneously" }
-                [PSCustomObject]@{ Key = "5"; Title = "CPU Computational Benchmark";     Desc = "Measure single-thread & multi-thread compute score" }
-                [PSCustomObject]@{ Key = "6"; Title = "RAM Memory Bandwidth Benchmark"; Desc = "Measure DDR5 read and copy throughput in GB/s" }
-                [PSCustomObject]@{ Key = "7"; Title = "All-in-One Full System Benchmark";Desc = "Run full sequence of Storage, RAM, CPU and GPU stress" }
+                [PSCustomObject]@{ Key = "5"; Title = "Manual Start / Stop Continuous Stress";Desc = "Continuous CPU/GPU burn-in with live keypress start and stop" }
+                [PSCustomObject]@{ Key = "6"; Title = "CPU Computational Benchmark";     Desc = "Measure single-thread & multi-thread compute score" }
+                [PSCustomObject]@{ Key = "7"; Title = "RAM Memory Bandwidth Benchmark"; Desc = "Measure DDR5 read and copy throughput in GB/s" }
+                [PSCustomObject]@{ Key = "8"; Title = "All-in-One Full System Benchmark";Desc = "Run full sequence of Storage, RAM, CPU and GPU stress" }
                 [PSCustomObject]@{ Key = "0"; Title = "Return to Main Menu";             Desc = "Back to subsystem launcher" }
             )
             $subPick = Show-SubMenu -HubTitle "HARDWARE BENCHMARK & STRESS TESTING HUB" -Options $subOpts
@@ -478,16 +479,40 @@ while ($true) {
                     [Console]::ReadKey($true) | Out-Null
                 }
                 "5" {
-                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -CpuBench
+                    Clear-Host
+                    Write-Host "================================================================================" -ForegroundColor Cyan
+                    Write-Host "       MANUAL START / STOP HARDWARE STRESS TEST CONTROLLER" -ForegroundColor Yellow
+                    Write-Host "================================================================================" -ForegroundColor Cyan
+                    Write-Host " Select Target Component for Continuous Burn-In:" -ForegroundColor White
+                    Write-Host " [1] Combined Full-System Burn-In (CPU + Dedicated GPU + RAM)" -ForegroundColor White
+                    Write-Host " [2] Dedicated GPU Stress (RTX 5050 CUDA 100% @ 2.7+ GHz)" -ForegroundColor White
+                    Write-Host " [3] Multi-Core CPU Thermal Stress (All Logical Threads)" -ForegroundColor White
+                    Write-Host " [0] Cancel" -ForegroundColor DarkGray
+                    Write-Host "--------------------------------------------------------------------------------" -ForegroundColor Cyan
+                    $mPick = Read-Host " Select target [0-3]"
+                    $tgt = switch ($mPick) {
+                        "1" { "system" }
+                        "2" { "gpu" }
+                        "3" { "cpu" }
+                        default { $null }
+                    }
+                    if ($tgt) {
+                        & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -ManualStress -Target $tgt
+                    }
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }
                 "6" {
-                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -RamBench
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -CpuBench
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }
                 "7" {
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -RamBench
+                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                    [Console]::ReadKey($true) | Out-Null
+                }
+                "8" {
                     & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -All
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null

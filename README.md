@@ -155,6 +155,8 @@ The benchmark engine provides safe, non-destructive hardware testing available b
   Leverages the native CUDA Driver API (`nvcuda.dll`) to launch 524,288 concurrent GPU threads executing heavy floating-point fused-multiply-add (FMA) arithmetic. Forces graphics clock frequencies up to maximum boost target (2.7+ GHz), measuring live GPU power draw (Watts), utilization, and diode thermals with zero external GUI app dependencies.
 * **Combined Full-System Burn-In Stress Test:**
   Simultaneously saturates all logical CPU cores, dedicated GPU CUDA threads, and system memory bus. Stress-tests laptop cooling fans, vapor chambers, VRMs, and dual-rail power delivery under peak combined wattage.
+* **Manual Start / Stop Continuous Stress Test:**
+  Provides on-demand interactive burn-in control across Combined Full-System, Dedicated GPU (RTX 5050 CUDA), or Multi-Core CPU targets. Starts immediately upon user keypress ([Enter] or [Space]) and runs continuously under maximum load with real-time in-place thermal and power telemetry until explicitly stopped ([Space], [Enter], [Q], or [Esc]). Cleans up all worker threads and releases CUDA memory contexts safely upon cessation.
 * **CPU Computational Benchmark:**
   Runs normalized single-threaded and multi-threaded mathematical workloads, calculating computational scores and multi-core scaling efficiency ratios.
 * **RAM Memory Bandwidth Benchmark:**

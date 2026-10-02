@@ -11,6 +11,8 @@ param(
     [switch]$CpuStress,
     [switch]$GpuStress,
     [switch]$SystemStress,
+    [switch]$ManualStress,
+    [string]$Target = "system",
     [switch]$CpuBench,
     [switch]$RamBench,
     [switch]$All,
@@ -260,6 +262,64 @@ function Test-SystemStress {
     Write-Host "================================================================================" -ForegroundColor Cyan
 }
 
+function Test-ManualStress {
+    param([string]$TargetComponent = "system")
+
+    $tgt = if ($TargetComponent) { $TargetComponent.ToLower() } else { "system" }
+    $title = switch ($tgt) {
+        "cpu" { "MULTI-CORE CPU CONTINUOUS STRESS TEST" }
+        "gpu" { "DEDICATED GPU (RTX 5050) CONTINUOUS STRESS TEST" }
+        default { "COMBINED FULL-SYSTEM CONTINUOUS BURN-IN (CPU + GPU + RAM)" }
+    }
+
+    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Host "         MANUAL START / STOP HARDWARE STRESS TEST" -ForegroundColor Yellow
+    Write-Host "         $title" -ForegroundColor White
+    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Host " Instructions:" -ForegroundColor White
+    Write-Host "   - Press [ENTER] or [SPACE] to START stress testing." -ForegroundColor Green
+    Write-Host "   - Once running, press [SPACE], [ENTER], [Q], or [ESC] to STOP at any time." -ForegroundColor Yellow
+    Write-Host "--------------------------------------------------------------------------------" -ForegroundColor Cyan
+
+    $pyEngine = Join-Path $PSScriptRoot "bench_engine.py"
+    if (Test-Path $pyEngine) {
+        python $pyEngine --manual $tgt
+    } else {
+        Write-Host " Press [ENTER] or [SPACE] to start continuous CPU stress..." -ForegroundColor Green
+        while ($true) {
+            if ([Console]::KeyAvailable) {
+                $k = [Console]::ReadKey($true)
+                if ($k.Key -in [System.ConsoleKey]::Enter, [System.ConsoleKey]::Spacebar) { break }
+                if ($k.Key -in [System.ConsoleKey]::Q, [System.ConsoleKey]::Escape) { return }
+            }
+            Start-Sleep -Milliseconds 50
+        }
+        Write-Host " Continuous stress workload ACTIVE. Press [SPACE] or [Q] to stop..." -ForegroundColor Yellow
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $baseTemp = 50.0
+        $peakTemp = $baseTemp
+        while ($true) {
+            if ([Console]::KeyAvailable) {
+                $k = [Console]::ReadKey($true)
+                if ($k.Key -in [System.ConsoleKey]::Spacebar, [System.ConsoleKey]::Enter, [System.ConsoleKey]::Q, [System.ConsoleKey]::Escape) { break }
+            }
+            $curTz = Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction SilentlyContinue
+            $curT = if ($curTz -and $curTz.CurrentTemperature) { [math]::Round(($curTz.CurrentTemperature - 2732) / 10, 1) } else { $baseTemp }
+            if ($curT -gt $peakTemp) { $peakTemp = $curT }
+            $el = [int]$sw.Elapsed.TotalSeconds
+            $mm = [math]::Floor($el / 60)
+            $ss = $el % 60
+            Write-Host -NoNewline ("`r  [RUNNING {0:D2}:{1:D2}] CPU Thermal Zone: {2} C | Peak: {3} C | Press [SPACE/Q] to STOP   " -f $mm, $ss, $curT, $peakTemp)
+            Start-Sleep -Seconds 1
+        }
+        $sw.Stop()
+        Write-Host "`n--------------------------------------------------------------------------------" -ForegroundColor Cyan
+        Write-Host " Stress test stopped after $([math]::Round($sw.Elapsed.TotalSeconds, 1)) seconds." -ForegroundColor Green
+        Write-Host " Peak Temperature : $peakTemp C" -ForegroundColor White
+        Write-Host "================================================================================" -ForegroundColor Cyan
+    }
+}
+
 # Execution router
 if ($StorageRead) {
     Test-StorageRead
@@ -269,6 +329,8 @@ if ($StorageRead) {
     Test-GpuStress -Duration $StressDuration
 } elseif ($SystemStress) {
     Test-SystemStress -Duration $StressDuration
+} elseif ($ManualStress) {
+    Test-ManualStress -TargetComponent $Target
 } elseif ($CpuBench) {
     Test-CpuBenchmark
 } elseif ($RamBench) {
@@ -292,20 +354,34 @@ if ($StorageRead) {
     Write-Host " [2] Multi-Core CPU Thermal Stress Test (10s with Throttle Tracking)" -ForegroundColor White
     Write-Host " [3] Dedicated GPU Hardware Stress Test (10s at 100% Load & 2.7+ GHz)" -ForegroundColor White
     Write-Host " [4] Combined Full-System Burn-In Stress Test (CPU + GPU + RAM)" -ForegroundColor White
-    Write-Host " [5] CPU Computational Performance Benchmark (Single/Multi-Thread)" -ForegroundColor White
-    Write-Host " [6] RAM Memory Bandwidth Benchmark (GB/s Read Throughput)" -ForegroundColor White
-    Write-Host " [7] Full Benchmark & Stress Suite (All-in-One)" -ForegroundColor White
+    Write-Host " [5] Manual Start / Stop Continuous Stress Test (Live Keypress Start/Stop)" -ForegroundColor White
+    Write-Host " [6] CPU Computational Performance Benchmark (Single/Multi-Thread)" -ForegroundColor White
+    Write-Host " [7] RAM Memory Bandwidth Benchmark (GB/s Read Throughput)" -ForegroundColor White
+    Write-Host " [8] Full Benchmark & Stress Suite (All-in-One)" -ForegroundColor White
     Write-Host " [0] Return / Exit" -ForegroundColor DarkGray
     Write-Host "--------------------------------------------------------------------------------" -ForegroundColor Cyan
-    $choice = Read-Host " Select an option [0-7]"
+    $choice = Read-Host " Select an option [0-8]"
     switch ($choice) {
         "1" { Test-StorageRead }
         "2" { Test-CpuStress -Duration 10 }
         "3" { Test-GpuStress -Duration 10 }
         "4" { Test-SystemStress -Duration 10 }
-        "5" { Test-CpuBenchmark }
-        "6" { Test-RamBandwidth }
-        "7" { 
+        "5" { 
+            Write-Host "`n Select Target Component for Manual Start / Stop:" -ForegroundColor Yellow
+            Write-Host " [1] Combined Full-System Burn-In (CPU + GPU + RAM)" -ForegroundColor White
+            Write-Host " [2] Dedicated GPU Stress (RTX 5050 CUDA 100%)" -ForegroundColor White
+            Write-Host " [3] Multi-Core CPU Thermal Stress" -ForegroundColor White
+            Write-Host " [0] Cancel" -ForegroundColor DarkGray
+            $tgtPick = Read-Host " Select target [0-3]"
+            switch ($tgtPick) {
+                "1" { Test-ManualStress -TargetComponent "system" }
+                "2" { Test-ManualStress -TargetComponent "gpu" }
+                "3" { Test-ManualStress -TargetComponent "cpu" }
+            }
+        }
+        "6" { Test-CpuBenchmark }
+        "7" { Test-RamBandwidth }
+        "8" { 
             Test-StorageRead
             Write-Host ""
             Test-RamBandwidth
