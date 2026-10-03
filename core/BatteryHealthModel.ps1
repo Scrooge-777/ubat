@@ -87,10 +87,21 @@ function Get-BatteryHealthAssessment {
 function Show-BatteryHealthReport {
     $h = Get-BatteryHealthAssessment
 
-    Clear-Host
-    Write-Host "================================================================================" -ForegroundColor Cyan
-    Write-Host "             BATTERY HEALTH ALGORITHMIC MODEL & DIAGNOSTICS                     " -ForegroundColor Yellow
-    Write-Host "================================================================================" -ForegroundColor Cyan
+    try { Clear-Host } catch {}
+    $w = 88
+    try {
+        if ([Console]::WindowWidth -gt 1) {
+            $w = [Console]::WindowWidth - 1
+            if ($w -lt 35) { $w = 35 }
+        }
+    } catch { $w = 88 }
+
+    Write-Host ("=" * $w) -ForegroundColor Cyan
+    $title = "BATTERY HEALTH ALGORITHMIC MODEL & DIAGNOSTICS"
+    $spaces = [math]::Max(0, [math]::Floor(($w - $title.Length) / 2))
+    $titleText = if ($title.Length -gt $w) { $title.Substring(0, $w) } else { (" " * $spaces) + $title }
+    Write-Host $titleText -ForegroundColor Yellow
+    Write-Host ("=" * $w) -ForegroundColor Cyan
     Write-Host ""
 
     Write-Host " [1. CALIBRATED BATTERY METRICS]" -ForegroundColor Green

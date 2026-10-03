@@ -79,11 +79,13 @@ function Reset-ConsoleCursor {
 }
 
 function Get-TermWidth {
-    $w = 92
+    $w = 88
     try {
-        $w = [Console]::WindowWidth - 1
-        if ($w -lt 80) { $w = 92 }
-    } catch { $w = 92 }
+        if ([Console]::WindowWidth -gt 1) {
+            $w = [Console]::WindowWidth - 1
+            if ($w -lt 35) { $w = 35 }
+        }
+    } catch { $w = 88 }
     return $w
 }
 
@@ -219,7 +221,7 @@ function Show-Header {
 
     $termWidth = Get-TermWidth
     $spaces = [math]::Max(0, [math]::Floor(($termWidth - $headerBanner.Length) / 2))
-    $centeredBanner = (" " * $spaces) + $headerBanner
+    $centeredBanner = if ($headerBanner.Length -gt $termWidth) { $headerBanner.Substring(0, $termWidth) } else { (" " * $spaces) + $headerBanner }
 
     Write-LineClean ("=" * $termWidth) Cyan
     Write-LineClean $centeredBanner Yellow
@@ -251,15 +253,24 @@ function Show-PartitionMenu {
     )
 
     $selectedIndex = 0
+    $lastMenuWidth = 0
+    $lastMenuHeight = 0
     Hide-ConsoleCursor
     Clear-Host
 
-    $termWidth = Get-TermWidth
-    $spaces = [math]::Max(0, [math]::Floor(($termWidth - $headerBanner.Length) / 2))
-    $centeredBanner = (" " * $spaces) + $headerBanner
-
     while ($true) {
+        $curW = Get-TermWidth
+        $curH = try { [Console]::WindowHeight } catch { 25 }
+        if ($curW -ne $lastMenuWidth -or $curH -ne $lastMenuHeight) {
+            $termWidth = $curW
+            $lastMenuWidth = $curW
+            $lastMenuHeight = $curH
+            Clear-Host
+        }
+
         Reset-ConsoleCursor
+        $spaces = [math]::Max(0, [math]::Floor(($termWidth - $headerBanner.Length) / 2))
+        $centeredBanner = if ($headerBanner.Length -gt $termWidth) { $headerBanner.Substring(0, $termWidth) } else { (" " * $spaces) + $headerBanner }
 
         Write-LineClean ("=" * $termWidth) Cyan
         Write-LineClean $centeredBanner Yellow
@@ -272,13 +283,28 @@ function Show-PartitionMenu {
         for ($i = 0; $i -lt $menuOptions.Count; $i++) {
             $opt = $menuOptions[$i]
             $num = $i + 1
+            $prefix = if ($i -eq $selectedIndex) { "  > [$num] " } else { "    [$num] " }
+            $avail = $termWidth - $prefix.Length
+            if ($avail -lt 40) {
+                $line = "$prefix$($opt.Title)"
+            } elseif ($avail -lt 65) {
+                $rem = $avail - $opt.Title.Length - 3
+                if ($rem -gt 8) {
+                    $desc = if ($opt.Desc.Length -gt $rem) { $opt.Desc.Substring(0, $rem - 3) + "..." } else { $opt.Desc }
+                    $line = "$prefix$($opt.Title) - $desc"
+                } else {
+                    $line = "$prefix$($opt.Title)"
+                }
+            } else {
+                $pad = [math]::Min(28, [math]::Max(18, [int]($avail * 0.32)))
+                $rem = $avail - $pad - 3
+                $desc = if ($opt.Desc.Length -gt $rem) { $opt.Desc.Substring(0, [math]::Max(0, $rem - 3)) + "..." } else { $opt.Desc }
+                $line = "$prefix$($opt.Title.PadRight($pad)) - $desc"
+            }
+
             if ($i -eq $selectedIndex) {
-                # Highlighted option with pointer in bright Green
-                $line = "  > [$num] $($opt.Title.PadRight(28)) - $($opt.Desc)"
                 Write-LineClean $line Green
             } else {
-                # Inactive option in Gray
-                $line = "    [$num] $($opt.Title.PadRight(28)) - $($opt.Desc)"
                 Write-LineClean $line Gray
             }
         }
@@ -294,6 +320,20 @@ function Show-PartitionMenu {
                 return "1"
             }
         } catch { return "1" }
+
+        # Live responsive polling for zoom detection
+        while (-not [Console]::KeyAvailable) {
+            $checkW = Get-TermWidth
+            $checkH = try { [Console]::WindowHeight } catch { 25 }
+            if ($checkW -ne $lastMenuWidth -or $checkH -ne $lastMenuHeight) {
+                break
+            }
+            Start-Sleep -Milliseconds 50
+        }
+
+        if (-not [Console]::KeyAvailable) {
+            continue
+        }
 
         $keyInfo = [Console]::ReadKey($true)
         switch ($keyInfo.Key) {
@@ -338,8 +378,19 @@ if (-not $InitialView -or $InitialView -eq "menu") {
 Hide-ConsoleCursor
 Clear-Host
 
+$lastMonWidth = 0
+$lastMonHeight = 0
+
 try {
     while ($true) {
+        $curMonW = Get-TermWidth
+        $curMonH = try { [Console]::WindowHeight } catch { 25 }
+        if ($curMonW -ne $lastMonWidth -or $curMonH -ne $lastMonHeight) {
+            $lastMonWidth = $curMonW
+            $lastMonHeight = $curMonH
+            Clear-Host
+        }
+
         # Check for live keyboard input to switch views or speed on the fly
         $keyAvailable = $false
         try {

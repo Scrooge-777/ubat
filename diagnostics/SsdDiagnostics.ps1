@@ -9,13 +9,18 @@
 $ScriptDir = Split-Path $PSScriptRoot -Parent
 $w = 88
 try {
-    $w = [Console]::WindowWidth - 1
-    if ($w -lt 80) { $w = 88 }
+    if ([Console]::WindowWidth -gt 1) {
+        $w = [Console]::WindowWidth - 1
+        if ($w -lt 35) { $w = 35 }
+    }
 } catch { $w = 88 }
 
 try { Clear-Host } catch { }
 Write-Host ("=" * $w) -ForegroundColor Cyan
-Write-Host (" " * [math]::Max(0, [math]::Floor(($w - 36) / 2)) + "STORAGE & NVME PARTITION DIAGNOSTICS") -ForegroundColor Yellow
+$title = "STORAGE & NVME PARTITION DIAGNOSTICS"
+$spaces = [math]::Max(0, [math]::Floor(($w - $title.Length) / 2))
+$titleText = if ($title.Length -gt $w) { $title.Substring(0, $w) } else { (" " * $spaces) + $title }
+Write-Host $titleText -ForegroundColor Yellow
 Write-Host ("=" * $w) -ForegroundColor Cyan
 Write-Host ""
 

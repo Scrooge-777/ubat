@@ -225,7 +225,7 @@ function updateUI(data) {
     gpuNameDisplay.textContent = g.name || 'NVIDIA GeForce RTX 5050';
     gpuUtilBadge.textContent = `${g.util}%`;
     gpuLoadDisplay.textContent = `${g.util}%`;
-    gpuTempDisplay.textContent = `${g.temp}°C`;
+    gpuTempDisplay.textContent = `${g.temp}C`;
     gpuPowerDisplay.textContent = `${g.power.toFixed(1)} W`;
   }
 

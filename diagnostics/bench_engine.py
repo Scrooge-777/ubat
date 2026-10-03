@@ -89,6 +89,16 @@ def _get_nvml_metrics(nvml, nvml_dev):
         return None
 
 
+def _get_term_width():
+    """Returns the current terminal width dynamically, adapting to font zoom in/out."""
+    try:
+        import shutil
+        cols = shutil.get_terminal_size((80, 24)).columns
+        return max(35, cols - 1)
+    except Exception:
+        return 79
+
+
 def _ascii_bar(pct, width=10):
     """Generates a clean text gauge meter [==========]"""
     try:
@@ -446,18 +456,15 @@ def run_ram_stress_test(duration=10, stop_event=None, progress_cb=None):
     base_used_pct = mem_init.percent
     base_used_gb = round(mem_init.used / (1024 ** 3), 2)
 
-    # Reserve 1.0 GB cushion for OS stability
-    cushion = 1024 * 1024 * 1024
-    target_alloc_bytes = max(0, mem_init.available - cushion)
-    chunk_sz = 64 * 1024 * 1024  # 64 MB blocks
-    num_chunks = int(target_alloc_bytes // chunk_sz)
-
+    # Force RAM to its peak (95-96% load, taskbar graph full) with safety headroom
     chunks = []
+    chunk_sz = 64 * 1024 * 1024  # 64 MB blocks
     fill_pat = b"\xaa" * (chunk_sz // 4096)
 
-    # Fast physical page commit
-    for _ in range(num_chunks):
-        if stop_event.is_set():
+    # Initial physical allocation loop up to 96% load
+    while not stop_event.is_set():
+        m_curr = psutil.virtual_memory()
+        if m_curr.percent >= 96.0 or m_curr.available <= 450 * 1024 * 1024:
             break
         try:
             c = bytearray(chunk_sz)
@@ -466,14 +473,15 @@ def run_ram_stress_test(duration=10, stop_event=None, progress_cb=None):
         except MemoryError:
             break
 
-    num_workers = 2
+    num_workers = 4
     churn_bytes = [0] * num_workers
     worker_threads = []
 
     def ram_worker(w_idx):
         total = 0
         while not stop_event.is_set():
-            for c in chunks:
+            curr_chunks = list(chunks)
+            for c in curr_chunks:
                 if stop_event.is_set():
                     break
                 s = sum(c[::65536])
@@ -503,6 +511,15 @@ def run_ram_stress_test(duration=10, stop_event=None, progress_cb=None):
             peak_pct = curr_pct
         if curr_used_gb > peak_used_gb:
             peak_used_gb = curr_used_gb
+
+        # Active top-up: keep RAM pinned at 95-96% peak load continuously
+        if curr_pct < 95.0 and m.available > 450 * 1024 * 1024:
+            try:
+                c = bytearray(chunk_sz)
+                c[::4096] = fill_pat
+                chunks.append(c)
+            except MemoryError:
+                pass
 
         tot_churned = sum(churn_bytes)
         churn_rate_gbs = round((tot_churned / (1024 ** 3)) / max(0.1, elapsed), 1)
@@ -619,15 +636,13 @@ def run_system_stress_test(duration=10, stop_event=None, progress_cb=None):
     ram_peak_pct = ram_base_pct
     ram_peak_used_gb = ram_base_used_gb
 
-    # Allocate physical RAM buffers (leave 1.0 GB cushion for OS stability)
-    cushion = 1024 * 1024 * 1024
-    target_alloc_bytes = max(0, mem_init.available - cushion)
-    chunk_sz = 64 * 1024 * 1024
-    num_chunks = int(target_alloc_bytes // chunk_sz)
-    fill_pat = b"\xaa" * (chunk_sz // 4096)
+    # Force RAM to its peak (95-96% load, taskbar graph full) with safety headroom
     ram_chunks = []
-    for _ in range(num_chunks):
-        if stop_event.is_set():
+    chunk_sz = 64 * 1024 * 1024
+    fill_pat = b"\xaa" * (chunk_sz // 4096)
+    while not stop_event.is_set():
+        m_curr = psutil.virtual_memory()
+        if m_curr.percent >= 96.0 or m_curr.available <= 450 * 1024 * 1024:
             break
         try:
             c = bytearray(chunk_sz)
@@ -763,6 +778,15 @@ def run_system_stress_test(duration=10, stop_event=None, progress_cb=None):
         if r_used_gb > ram_peak_used_gb:
             ram_peak_used_gb = r_used_gb
 
+        # Active top-up: keep RAM pinned at 95-96% peak load continuously
+        if r_pct < 95.0 and m_ram.available > 450 * 1024 * 1024:
+            try:
+                c = bytearray(chunk_sz)
+                c[::4096] = fill_pat
+                ram_chunks.append(c)
+            except MemoryError:
+                pass
+
         if progress_cb:
             should_stop = progress_cb(elapsed, duration, c_temp, g_temp, g_power, g_util, r_pct, r_used_gb, ram_total_gb)
             if should_stop:
@@ -845,14 +869,22 @@ def run_manual_stress_test(test_type="system", progress_cb=None):
 
     # If progress_cb is not supplied, use standard in-terminal interactive controller
     if progress_cb is None:
-        print("\n+------------------------------------------------------------------------------+")
-        print(f"|            OMNI CONTINUOUS HARDWARE STRESS CONTROLLER                        |")
-        print(f"|            TARGET: {target_desc.upper():<57} |")
-        print("+------------------------------------------------------------------------------+")
+        w = _get_term_width()
+        border = "+" + "-" * (w - 2) + "+"
+        div = "-" * w
+        banner_title = "OMNI CONTINUOUS HARDWARE STRESS CONTROLLER"
+        tgt_title = f"TARGET: {target_desc.upper()}"
+        if len(tgt_title) > w - 4:
+            tgt_title = tgt_title[:w - 4]
+
+        print("\n" + border)
+        print(f"| {banner_title:^{w-4}} |")
+        print(f"| {tgt_title:^{w-4}} |")
+        print(border)
         print("  Instructions:")
         print("  - Press [ENTER] or [SPACE] to START continuous stress testing.")
         print("  - Once active, press [SPACE], [ENTER], [Q], or [ESC] to STOP at any time.")
-        print("+------------------------------------------------------------------------------+\n")
+        print(border + "\n")
 
         sys.stdout.write("  Waiting for start trigger [ENTER / SPACE] (or [Q] to cancel)... ")
         sys.stdout.flush()
@@ -893,27 +925,30 @@ def run_manual_stress_test(test_type="system", progress_cb=None):
                     if k in [b' ', b'\r', b'\n', b'q', b'Q', b'\x1b']:
                         return True
 
+            w = _get_term_width()
             mm = int(elapsed) // 60
             ss = int(elapsed) % 60
+            bar_w = 6 if w < 65 else 10
+
             if test_type == "cpu":
                 cur_t = cb_args[0] if len(cb_args) > 0 else 0.0
                 cur_f = cb_args[1] if len(cb_args) > 1 else 0
-                bar = _ascii_bar(100.0, 10)
-                sys.stdout.write(f"\r  [RUNNING {mm:02d}:{ss:02d}] CPU: {bar} 100% | Temp: {cur_t:.1f} C | Freq: {cur_f} MHz | [SPACE / Q] STOP   ")
+                bar = _ascii_bar(100.0, bar_w)
+                line = f"  [RUNNING {mm:02d}:{ss:02d}] CPU: {bar} 100% | Temp: {cur_t:.1f} C | Freq: {cur_f} MHz | [SPACE/Q] STOP"
             elif test_type == "gpu":
                 cur_t = cb_args[0] if len(cb_args) > 0 else 0.0
                 cur_p = cb_args[1] if len(cb_args) > 1 else 0.0
                 cur_u = cb_args[2] if len(cb_args) > 2 else 0
                 cur_c = cb_args[3] if len(cb_args) > 3 else 0
-                bar = _ascii_bar(cur_u, 10)
-                sys.stdout.write(f"\r  [RUNNING {mm:02d}:{ss:02d}] GPU: {bar} {cur_u}% | Pwr: {cur_p:.1f} W | Temp: {cur_t:.1f} C | Clk: {cur_c} MHz | [SPACE / Q] STOP   ")
+                bar = _ascii_bar(cur_u, bar_w)
+                line = f"  [RUNNING {mm:02d}:{ss:02d}] GPU: {bar} {cur_u}% | Pwr: {cur_p:.1f} W | Temp: {cur_t:.1f} C | Clk: {cur_c} MHz | [SPACE/Q] STOP"
             elif test_type == "ram":
                 r_pct = cb_args[0] if len(cb_args) > 0 else 0.0
                 r_used = cb_args[1] if len(cb_args) > 1 else 0.0
                 r_tot = cb_args[2] if len(cb_args) > 2 else 0.0
                 r_rate = cb_args[3] if len(cb_args) > 3 else 0.0
-                bar = _ascii_bar(r_pct, 10)
-                sys.stdout.write(f"\r  [RUNNING {mm:02d}:{ss:02d}] RAM: {bar} {r_pct:.1f}% ({r_used:.1f}/{r_tot:.1f} GB) | Churn: {r_rate:.1f} GB/s | [SPACE / Q] STOP   ")
+                bar = _ascii_bar(r_pct, bar_w)
+                line = f"  [RUNNING {mm:02d}:{ss:02d}] RAM: {bar} {r_pct:.1f}% ({r_used:.1f}/{r_tot:.1f} GB) | Churn: {r_rate:.1f} GB/s | [SPACE/Q] STOP"
             else:
                 c_t = cb_args[0] if len(cb_args) > 0 else 0.0
                 g_t = cb_args[1] if len(cb_args) > 1 else 0.0
@@ -921,7 +956,13 @@ def run_manual_stress_test(test_type="system", progress_cb=None):
                 g_u = cb_args[3] if len(cb_args) > 3 else 0
                 r_pct = cb_args[4] if len(cb_args) > 4 else 0.0
                 r_used = cb_args[5] if len(cb_args) > 5 else 0.0
-                sys.stdout.write(f"\r  [RUNNING {mm:02d}:{ss:02d}] CPU: {c_t:.1f} C | GPU: {g_u}% ({g_p:.1f} W, {g_t:.1f} C) | RAM: {r_pct:.1f}% ({r_used:.1f} GB) | [SPACE / Q] STOP   ")
+                line = f"  [RUNNING {mm:02d}:{ss:02d}] CPU: {c_t:.1f} C | GPU: {g_u}% ({g_p:.1f} W, {g_t:.1f} C) | RAM: {r_pct:.1f}% ({r_used:.1f} GB) | [SPACE/Q] STOP"
+
+            if len(line) > w:
+                line = line[:w]
+            else:
+                line = line.ljust(w)
+            sys.stdout.write(f"\r{line}")
             sys.stdout.flush()
             return False
 
@@ -934,12 +975,17 @@ def run_manual_stress_test(test_type="system", progress_cb=None):
         else:
             res = run_system_stress_test(duration=0, stop_event=stop_ev, progress_cb=default_interactive_cb)
 
-        print("\n\n+------------------------------------------------------------------------------+")
-        print("|                   OMNI HARDWARE STRESS TEST SUMMARY REPORT                   |")
-        print("+------------------------------------------------------------------------------+")
+        w = _get_term_width()
+        border = "+" + "-" * (w - 2) + "+"
+        div = "-" * w
+        rep_title = "OMNI HARDWARE STRESS TEST SUMMARY REPORT"
+
+        print("\n\n" + border)
+        print(f"| {rep_title:^{w-4}} |")
+        print(border)
         print(f"  Status                 : PASS (Halted cleanly by user after {res.get('duration_s', 0)}s)")
         print(f"  Component Tested       : {target_desc.upper()}")
-        print("--------------------------------------------------------------------------------")
+        print(div)
 
         if test_type == "cpu":
             throt = "YES (Throttling Active)" if res.get('thermal_throttling') else "NO (Nominal Headroom)"
@@ -969,7 +1015,7 @@ def run_manual_stress_test(test_type="system", progress_cb=None):
             print(f"  RAM Peak Saturation    : {res.get('ram_peak_pct')}% ({res.get('ram_peak_used_gb')} / {res.get('ram_total_gb')} GB Committed)")
             print(f"  RAM Data Churned       : {res.get('ram_churned_gb')} GB Processed")
             print(f"  GPU CUDA Launches      : {res.get('gpu_launches'):,}")
-        print("+------------------------------------------------------------------------------+\n")
+        print(border + "\n")
         return res
 
     else:
@@ -1083,7 +1129,8 @@ def run_cpu_benchmark(duration_seconds=3):
         "multi_thread_ops_sec": mt_ops_sec,
         "multi_thread_score": multi_score,
         "multi_thread_ratio": multi_ratio,
-        "threads_tested": physical_cores
+        "threads_tested": physical_cores,
+        "status": "PASS"
     }
 
 

@@ -16,12 +16,17 @@ function Show-LogViewer {
     Clear-Host
     $w = 88
     try {
-        $w = [Console]::WindowWidth - 1
-        if ($w -lt 80) { $w = 88 }
+        if ([Console]::WindowWidth -gt 1) {
+            $w = [Console]::WindowWidth - 1
+            if ($w -lt 35) { $w = 35 }
+        }
     } catch { $w = 88 }
 
     Write-Host ("=" * $w) -ForegroundColor Cyan
-    Write-Host (" " * [math]::Max(0, [math]::Floor(($w - 24) / 2)) + "OMNI SESSION LOG VIEWER") -ForegroundColor Yellow
+    $title = "OMNI SESSION LOG VIEWER"
+    $spaces = [math]::Max(0, [math]::Floor(($w - $title.Length) / 2))
+    $titleText = if ($title.Length -gt $w) { $title.Substring(0, $w) } else { (" " * $spaces) + $title }
+    Write-Host $titleText -ForegroundColor Yellow
     Write-Host ("=" * $w) -ForegroundColor Cyan
 
     # 1. Daemon Status

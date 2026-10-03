@@ -20,12 +20,37 @@ param(
     [int]$StressDuration = 10
 )
 
+function Get-TermWidth {
+    $w = 88
+    try {
+        if ([Console]::WindowWidth -gt 1) {
+            $w = [Console]::WindowWidth - 1
+            if ($w -lt 35) { $w = 35 }
+        }
+    } catch { $w = 88 }
+    return $w
+}
+
+function Write-Border {
+    param([string]$Char = "=", [ConsoleColor]$Color = [ConsoleColor]::Cyan)
+    $w = Get-TermWidth
+    Write-Host ($Char * $w) -ForegroundColor $Color
+}
+
+function Write-Centered {
+    param([string]$Text, [ConsoleColor]$Color = [ConsoleColor]::Yellow)
+    $w = Get-TermWidth
+    $spaces = [math]::Max(0, [math]::Floor(($w - $Text.Length) / 2))
+    $str = if ($Text.Length -gt $w) { $Text.Substring(0, $w) } else { (" " * $spaces) + $Text }
+    Write-Host $str -ForegroundColor $Color
+}
+
 function Test-StorageRead {
     param([int]$SizeMB = 64, [int]$RandomOps = 300)
 
-    Write-Host "================================================================================" -ForegroundColor Cyan
-    Write-Host "              NVME STORAGE READ BENCHMARK (PHYSICAL THROUGHPUT)" -ForegroundColor Yellow
-    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Border "=" Cyan
+    Write-Centered "NVME STORAGE READ BENCHMARK (PHYSICAL THROUGHPUT)" Yellow
+    Write-Border "=" Cyan
     Write-Host " Target Volume  : C:\ (System NVMe SSD)" -ForegroundColor White
     Write-Host " Payload Size   : $SizeMB MB Sequential Block | $RandomOps Random 4K Operations" -ForegroundColor White
     Write-Host " Preparing uncompressible test block..." -ForegroundColor Gray
@@ -198,9 +223,9 @@ function Test-CpuBenchmark {
 }
 
 function Test-RamBandwidth {
-    Write-Host "================================================================================" -ForegroundColor Cyan
-    Write-Host "                  RAM MEMORY BANDWIDTH & READ BENCHMARK" -ForegroundColor Yellow
-    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Border "=" Cyan
+    Write-Centered "RAM MEMORY BANDWIDTH & READ BENCHMARK" Yellow
+    Write-Border "=" Cyan
     
     $pyEngine = Join-Path $PSScriptRoot "bench_engine.py"
     if (Get-Command python -ErrorAction SilentlyContinue) {
@@ -211,7 +236,7 @@ function Test-RamBandwidth {
             Write-Host " Memory Block Copy Rate   : $($matches[2]) GB/s" -ForegroundColor Green
             Write-Host " Configured Memory Bus    : DDR5-5600 MT/s (SK Hynix)" -ForegroundColor White
             Write-Host " Benchmark Status         : PASS (High Bandwidth Channel)" -ForegroundColor Green
-            Write-Host "================================================================================" -ForegroundColor Cyan
+            Write-Border "=" Cyan
             return
         }
     }
@@ -226,15 +251,15 @@ function Test-RamBandwidth {
     $sw.Stop()
     $readGBs = [math]::Round(((64 * 1024 * 1024) / (1024 * 1024 * 1024)) / [math]::Max(0.0001, $sw.Elapsed.TotalSeconds), 2)
     Write-Host " Memory Throughput Rate   : $readGBs GB/s" -ForegroundColor Green
-    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Border "=" Cyan
 }
 
 function Test-GpuStress {
     param([int]$Duration = 10)
 
-    Write-Host "================================================================================" -ForegroundColor Cyan
-    Write-Host "             DEDICATED GPU HARDWARE STRESS TEST (NVIDIA RTX)" -ForegroundColor Yellow
-    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Border "=" Cyan
+    Write-Centered "DEDICATED GPU HARDWARE STRESS TEST (NVIDIA RTX)" Yellow
+    Write-Border "=" Cyan
     Write-Host " Initializing CUDA Driver API (nvcuda.dll) & 524,288 concurrent threads..." -ForegroundColor Gray
 
     $pyEngine = Join-Path $PSScriptRoot "bench_engine.py"
@@ -243,15 +268,15 @@ function Test-GpuStress {
     } else {
         Write-Host " GPU benchmark engine unavailable." -ForegroundColor Red
     }
-    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Border "=" Cyan
 }
 
 function Test-RamStress {
     param([int]$Duration = 10)
 
-    Write-Host "================================================================================" -ForegroundColor Cyan
-    Write-Host "         DEDICATED RAM MEMORY SATURATION STRESS TEST (DDR5)" -ForegroundColor Yellow
-    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Border "=" Cyan
+    Write-Centered "DEDICATED RAM MEMORY SATURATION STRESS TEST (DDR5)" Yellow
+    Write-Border "=" Cyan
     Write-Host " Allocating physical memory to 90-95% capacity & saturating DDR5 memory bus..." -ForegroundColor Gray
 
     $pyEngine = Join-Path $PSScriptRoot "bench_engine.py"
@@ -260,15 +285,15 @@ function Test-RamStress {
     } else {
         Write-Host " RAM stress benchmark engine unavailable." -ForegroundColor Red
     }
-    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Border "=" Cyan
 }
 
 function Test-SystemStress {
     param([int]$Duration = 10)
 
-    Write-Host "================================================================================" -ForegroundColor Cyan
-    Write-Host "       COMBINED FULL-SYSTEM BURN-IN STRESS TEST (CPU + GPU + RAM)" -ForegroundColor Yellow
-    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Border "=" Cyan
+    Write-Centered "COMBINED FULL-SYSTEM BURN-IN STRESS TEST (CPU + GPU + RAM)" Yellow
+    Write-Border "=" Cyan
     Write-Host " Saturating CPU threads, GPU CUDA cores, and physical RAM simultaneously..." -ForegroundColor Gray
 
     $pyEngine = Join-Path $PSScriptRoot "bench_engine.py"
@@ -277,7 +302,7 @@ function Test-SystemStress {
     } else {
         Write-Host " System benchmark engine unavailable." -ForegroundColor Red
     }
-    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Border "=" Cyan
 }
 
 function Test-ManualStress {
@@ -295,14 +320,14 @@ function Test-ManualStress {
     if (Test-Path $pyEngine) {
         python $pyEngine --manual $tgt
     } else {
-        Write-Host "================================================================================" -ForegroundColor Cyan
-        Write-Host "         MANUAL START / STOP HARDWARE STRESS TEST" -ForegroundColor Yellow
-        Write-Host "         $title" -ForegroundColor White
-        Write-Host "================================================================================" -ForegroundColor Cyan
+        Write-Border "=" Cyan
+        Write-Centered "MANUAL START / STOP HARDWARE STRESS TEST" Yellow
+        Write-Centered $title White
+        Write-Border "=" Cyan
         Write-Host " Instructions:" -ForegroundColor White
         Write-Host "   - Press [ENTER] or [SPACE] to START stress testing." -ForegroundColor Green
         Write-Host "   - Once running, press [SPACE], [ENTER], [Q], or [ESC] to STOP at any time." -ForegroundColor Yellow
-        Write-Host "--------------------------------------------------------------------------------" -ForegroundColor Cyan
+        Write-Border "-" Cyan
         Write-Host " Press [ENTER] or [SPACE] to start continuous workload..." -ForegroundColor Green
         while ($true) {
             if ([Console]::KeyAvailable) {
@@ -331,10 +356,11 @@ function Test-ManualStress {
             Start-Sleep -Seconds 1
         }
         $sw.Stop()
-        Write-Host "`n--------------------------------------------------------------------------------" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Border "-" Cyan
         Write-Host " Stress test stopped after $([math]::Round($sw.Elapsed.TotalSeconds, 1)) seconds." -ForegroundColor Green
         Write-Host " Peak Temperature : $peakTemp C" -ForegroundColor White
-        Write-Host "================================================================================" -ForegroundColor Cyan
+        Write-Border "=" Cyan
     }
 }
 
@@ -369,9 +395,9 @@ if ($StorageRead) {
     Test-RamStress -Duration 5
 } else {
     # Interactive Console Menu
-    Write-Host "================================================================================" -ForegroundColor Cyan
-    Write-Host "              OMNI - HARDWARE BENCHMARK & STRESS TEST SUITE" -ForegroundColor Yellow
-    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Border "=" Cyan
+    Write-Centered "OMNI - HARDWARE BENCHMARK & STRESS TEST SUITE" Yellow
+    Write-Border "=" Cyan
     Write-Host " [1] NVMe Storage Read Benchmark (Sequential & 4K Random MB/s)" -ForegroundColor White
     Write-Host " [2] Multi-Core CPU Thermal Stress Test (10s with Throttle Tracking)" -ForegroundColor White
     Write-Host " [3] Dedicated GPU Hardware Stress Test (10s at 100% Load & 2.7+ GHz)" -ForegroundColor White
@@ -382,7 +408,7 @@ if ($StorageRead) {
     Write-Host " [8] RAM Memory Bandwidth Benchmark (GB/s Read Throughput)" -ForegroundColor White
     Write-Host " [9] Full Benchmark & Stress Suite (All-in-One)" -ForegroundColor White
     Write-Host " [0] Return / Exit" -ForegroundColor DarkGray
-    Write-Host "--------------------------------------------------------------------------------" -ForegroundColor Cyan
+    Write-Border "-" Cyan
     $choice = Read-Host " Select an option [0-9]"
     switch ($choice) {
         "1" { Test-StorageRead }

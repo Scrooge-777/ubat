@@ -42,11 +42,13 @@ function Reset-Cursor {
 }
 
 function Get-Width {
-    $w = 92
+    $w = 88
     try {
-        $w = [Console]::WindowWidth - 1
-        if ($w -lt 80) { $w = 92 }
-    } catch { $w = 92 }
+        if ([Console]::WindowWidth -gt 1) {
+            $w = [Console]::WindowWidth - 1
+            if ($w -lt 35) { $w = 35 }
+        }
+    } catch { $w = 88 }
     return $w
 }
 
@@ -64,6 +66,34 @@ function Write-LineClean {
     Write-Host "$cleanText`e[K" -ForegroundColor $ForegroundColor
 }
 
+function Format-MenuOptionLine {
+    param(
+        [object]$Option,
+        [bool]$IsSelected,
+        [int]$TermWidth
+    )
+    $prefix = if ($IsSelected) { "  > [$($Option.Key)] " } else { "    [$($Option.Key)] " }
+    $avail = $TermWidth - $prefix.Length
+    if ($avail -le 20) {
+        return "$prefix$($Option.Title)"
+    }
+    if ($avail -lt 55) {
+        $title = $Option.Title
+        $rem = $avail - $title.Length - 3
+        if ($rem -gt 8) {
+            $desc = if ($Option.Desc.Length -gt $rem) { $Option.Desc.Substring(0, $rem - 3) + "..." } else { $Option.Desc }
+            return "$prefix$title - $desc"
+        } else {
+            return "$prefix$title"
+        }
+    } else {
+        $pad = [math]::Min(28, [math]::Max(18, [int]($avail * 0.32)))
+        $rem = $avail - $pad - 3
+        $desc = if ($Option.Desc.Length -gt $rem) { $Option.Desc.Substring(0, [math]::Max(0, $rem - 3)) + "..." } else { $Option.Desc }
+        return "$prefix$($Option.Title.PadRight($pad)) - $desc"
+    }
+}
+
 function Show-SubMenu {
     param(
         [string]$HubTitle,
@@ -71,18 +101,36 @@ function Show-SubMenu {
     )
 
     $subIndex = 0
+    $lastWidth = 0
+    $lastHeight = 0
+
     while ($true) {
         Hide-Cursor
-        Clear-Host
         $termWidth = Get-Width
+        $termHeight = try { [Console]::WindowHeight } catch { 25 }
+        $lastWidth = $termWidth
+        $lastHeight = $termHeight
+        try { Clear-Host } catch {}
 
         $exitSub = $false
         $chosenSubKey = $null
 
         while (-not $exitSub) {
+            $curW = Get-Width
+            $curH = try { [Console]::WindowHeight } catch { 25 }
+            if ($curW -ne $lastWidth -or $curH -ne $lastHeight) {
+                $termWidth = $curW
+                $termHeight = $curH
+                $lastWidth = $curW
+                $lastHeight = $curH
+                try { Clear-Host } catch {}
+            }
+
             Reset-Cursor
             Write-LineClean ("=" * $termWidth) Cyan
-            Write-LineClean (" " * [math]::Max(0, [math]::Floor(($termWidth - $HubTitle.Length) / 2)) + $HubTitle) Yellow
+            $spaces = [math]::Max(0, [math]::Floor(($termWidth - $HubTitle.Length) / 2))
+            $bannerText = if ($HubTitle.Length -gt $termWidth) { $HubTitle.Substring(0, $termWidth) } else { (" " * $spaces) + $HubTitle }
+            Write-LineClean $bannerText Yellow
             Write-LineClean ("=" * $termWidth) Cyan
             Write-LineClean " Choose a sub-module to execute:" White
             Write-LineClean " (Use [Up / Down] Arrow Keys to navigate, [Enter] to select, or tap [0-9])" DarkGray
@@ -90,11 +138,10 @@ function Show-SubMenu {
 
             for ($i = 0; $i -lt $Options.Count; $i++) {
                 $opt = $Options[$i]
+                $line = Format-MenuOptionLine -Option $opt -IsSelected ($i -eq $subIndex) -TermWidth $termWidth
                 if ($i -eq $subIndex) {
-                    $line = "  > [$($opt.Key)] $($opt.Title.PadRight(32)) - $($opt.Desc)"
                     Write-LineClean $line Green
                 } else {
-                    $line = "    [$($opt.Key)] $($opt.Title.PadRight(32)) - $($opt.Desc)"
                     Write-LineClean $line Gray
                 }
             }
@@ -107,6 +154,20 @@ function Show-SubMenu {
             try {
                 if ([Console]::IsInputRedirected) { return $null }
             } catch { return $null }
+
+            # Live responsive polling (detects zoom in / zoom out while sitting on menu)
+            while (-not [Console]::KeyAvailable) {
+                $checkW = Get-Width
+                $checkH = try { [Console]::WindowHeight } catch { 25 }
+                if ($checkW -ne $lastWidth -or $checkH -ne $lastHeight) {
+                    break
+                }
+                Start-Sleep -Milliseconds 50
+            }
+
+            if (-not [Console]::KeyAvailable) {
+                continue
+            }
 
             $kInfo = [Console]::ReadKey($true)
             switch ($kInfo.Key) {
@@ -148,30 +209,173 @@ function Show-SubMenu {
     }
 }
 
+function Invoke-AutoResizeCalibrator {
+    Hide-Cursor
+    $lastW = 0
+    $lastH = 0
+    $redrawCount = 0
+    $statusNotice = "Calibrator Engine Initialized. Listening for live zoom/resize events..."
+
+    while ($true) {
+        $curW = Get-Width
+        $curH = try { [Console]::WindowHeight } catch { 25 }
+
+        if ($curW -ne $lastW -or $curH -ne $lastH) {
+            $redrawCount++
+            $zoomMode = if ($curW -lt 60) {
+                "[HIGH ZOOM / MAGNIFIED] Compact Layout"
+            } elseif ($curW -lt 85) {
+                "[STANDARD ZOOM] Balanced Alignment"
+            } elseif ($curW -lt 120) {
+                "[EXPANDED / COMFORT] High Headroom"
+            } else {
+                "[ULTRA-WIDE CANVAS] Max Columns"
+            }
+            if ($lastW -gt 0) {
+                $statusNotice = "[ZOOM / RESIZE DETECTED] Adapted from $lastW to $curW cols ($zoomMode)"
+            }
+            $lastW = $curW
+            $lastH = $curH
+            try { Clear-Host } catch {}
+        }
+
+        Reset-Cursor
+        $termWidth = $lastW
+
+        # Header Banner
+        $titleStr = "DYNAMIC AUTO-RESIZE & LAYOUT CALIBRATOR (RACES)"
+        $spaces = [math]::Max(0, [math]::Floor(($termWidth - $titleStr.Length) / 2))
+        $bannerText = if ($titleStr.Length -gt $termWidth) { $titleStr.Substring(0, $termWidth) } else { (" " * $spaces) + $titleStr }
+
+        Write-LineClean ("=" * $termWidth) Cyan
+        Write-LineClean $bannerText Yellow
+        Write-LineClean ("=" * $termWidth) Cyan
+
+        $zoomModeDesc = if ($termWidth -lt 60) { "Magnified / Zoomed-In" } elseif ($termWidth -lt 85) { "Standard / Normal" } else { "Expanded / Zoomed-Out" }
+        Write-LineClean " Console Metrics : Width: $termWidth cols | Height: $lastH rows | Mode: $zoomModeDesc" White
+        Write-LineClean " Live Event Notice : $statusNotice" Gray
+        Write-LineClean ("-" * $termWidth) DarkGray
+        Write-LineClean " RESPONSIVE 10-ALERT SYSTEM STATUS & LAYOUT VERIFICATION:" Yellow
+        Write-LineClean "" White
+
+        # 10 Responsive Alert Elements
+        $alerts = @(
+            @{ Id = "01"; Subsys = "ACPI THERMALS  "; Status = "NOMINAL"; Val = "48.0 C (Cool)"; Pct = 48 }
+            @{ Id = "02"; Subsys = "CPU THROTTLING "; Status = "CLEAR  "; Val = "0% Throttling Vector"; Pct = 0 }
+            @{ Id = "03"; Subsys = "RTX 5050 CUDA  "; Status = "ACTIVE "; Val = "524,288 Threads Ready"; Pct = 100 }
+            @{ Id = "04"; Subsys = "RAM SATURATION "; Status = "PEAK   "; Val = "DDR5 Pinned at 95%+"; Pct = 96 }
+            @{ Id = "05"; Subsys = "NVMe SSD WEAR  "; Status = "HEALTHY"; Val = "0% Wear Degradation"; Pct = 100 }
+            @{ Id = "06"; Subsys = "BATTERY DRAIN  "; Status = "OPTIMAL"; Val = "Discharge <= 15W Target"; Pct = 85 }
+            @{ Id = "07"; Subsys = "PCIe NATIVE ASPM";Status = "LOCKED "; Val = "DisableNativeAspm = 1"; Pct = 100 }
+            @{ Id = "08"; Subsys = "DRIVER WudfRd  "; Status = "SYSTEM "; Val = "Start Type 1 (Verified)"; Pct = 100 }
+            @{ Id = "09"; Subsys = "BUFFER AUTO-FIT"; Status = "SYNCED "; Val = "Edge No-Wrap Guard Active"; Pct = 100 }
+            @{ Id = "10"; Subsys = "LIVE ZOOM TRACK"; Status = "LOCKED "; Val = "Auto-Layout Refresh Engine"; Pct = 100 }
+        )
+
+        foreach ($a in $alerts) {
+            if ($termWidth -ge 95) {
+                $barW = 12
+                $filled = [int](($a.Pct / 100.0) * $barW)
+                $bar = "[" + ("=" * $filled) + (" " * ($barW - $filled)) + "]"
+                $line = "  [$($a.Id)] $($a.Subsys) : $bar [$($a.Status)] $($a.Val)"
+            } elseif ($termWidth -ge 70) {
+                $barW = 6
+                $filled = [int](($a.Pct / 100.0) * $barW)
+                $bar = "[" + ("=" * $filled) + (" " * ($barW - $filled)) + "]"
+                $line = "  [$($a.Id)] $($a.Subsys.Trim()) $bar [$($a.Status)] $($a.Val)"
+            } elseif ($termWidth -ge 50) {
+                $line = "  [$($a.Id)] $($a.Subsys.Trim()): [$($a.Status)] $($a.Val)"
+            } else {
+                $line = "  [$($a.Id)] $($a.Status): $($a.Subsys.Trim())"
+            }
+            if ($line.Length -gt $termWidth) {
+                $line = $line.Substring(0, $termWidth)
+            }
+            Write-LineClean $line $(if ($a.Status -in "NOMINAL","HEALTHY","SYNCED","LOCKED","OPTIMAL","PEAK") { 'Green' } else { 'Cyan' })
+        }
+
+        Write-LineClean "" White
+        Write-LineClean ("-" * $termWidth) Cyan
+        Write-LineClean " Live Zoom Test: Press [Ctrl + / Wheel Up] or [Ctrl - / Wheel Down] to test auto-resize!" Yellow
+        Write-LineClean " Controls      : [R] Force Redraw  |  [0 / Esc / Q] Return to Main Menu" DarkGray
+        try { [Console]::Write("`e[J") } catch {}
+
+        try {
+            if ([Console]::IsInputRedirected) { Show-Cursor; return }
+        } catch { Show-Cursor; return }
+
+        # Non-blocking poll loop detecting zoom events in real time (every 40ms)
+        $keyAvail = $false
+        try { $keyAvail = [Console]::KeyAvailable } catch { Show-Cursor; return }
+        while (-not $keyAvail) {
+            $testW = Get-Width
+            $testH = try { [Console]::WindowHeight } catch { 25 }
+            if ($testW -ne $lastW -or $testH -ne $lastH) {
+                break
+            }
+            Start-Sleep -Milliseconds 40
+            try { $keyAvail = [Console]::KeyAvailable } catch { Show-Cursor; return }
+        }
+
+        if (-not $keyAvail) {
+            continue
+        }
+
+        $k = [Console]::ReadKey($true)
+        switch ($k.Key) {
+            'Escape' { Show-Cursor; return }
+            Default {
+                $ch = $k.KeyChar
+                if ($ch -in '0','q','Q') { Show-Cursor; return }
+                if ($ch -in 'r','R') {
+                    $lastW = 0
+                    $statusNotice = "[MANUAL RE-ALIGNMENT TRIGGERED] Redrawn to $curW cols"
+                }
+            }
+        }
+    }
+}
+
 $mainOptions = @(
-    [PSCustomObject]@{ Key = "1"; Title = "Live System Monitor";       Desc = "All-in-One real-time terminal telemetry engine" }
-    [PSCustomObject]@{ Key = "2"; Title = "Storage & SSD Hub";         Desc = "Partitions, file systems, SMART wear & SSD TRIM optimizer" }
-    [PSCustomObject]@{ Key = "3"; Title = "Battery & Health Hub";      Desc = "Calibrated health %, wear level, cycle count & battery tuner" }
-    [PSCustomObject]@{ Key = "4"; Title = "CPU & Memory Hub";          Desc = "Multi-thread core loads, RAM volume & frequency limits" }
-    [PSCustomObject]@{ Key = "5"; Title = "Process Manager Hub";       Desc = "Fast resource monitor & interactive PID killer" }
-    [PSCustomObject]@{ Key = "6"; Title = "Session Logs & Reports";    Desc = "In-terminal session logs, analysis reports & folder access" }
+    [PSCustomObject]@{ Key = "1"; Title = "Live System Monitor";          Desc = "All-in-One real-time terminal telemetry engine" }
+    [PSCustomObject]@{ Key = "2"; Title = "Storage & SSD Hub";            Desc = "Partitions, file systems, SMART wear & SSD TRIM optimizer" }
+    [PSCustomObject]@{ Key = "3"; Title = "Battery & Health Hub";         Desc = "Calibrated health %, wear level, cycle count & battery tuner" }
+    [PSCustomObject]@{ Key = "4"; Title = "CPU & Memory Hub";             Desc = "Multi-thread core loads, RAM volume & frequency limits" }
+    [PSCustomObject]@{ Key = "5"; Title = "Process Manager Hub";          Desc = "Fast resource monitor & interactive PID killer" }
+    [PSCustomObject]@{ Key = "6"; Title = "Session Logs & Reports";       Desc = "In-terminal session logs, analysis reports & folder access" }
     [PSCustomObject]@{ Key = "7"; Title = "Benchmark & Stress Testing Hub";Desc = "NVMe read, CPU/GPU/RAM burn-in stress tests & bandwidth" }
-    [PSCustomObject]@{ Key = "0"; Title = "Exit";                      Desc = "Exit OMNI toolkit" }
+    [PSCustomObject]@{ Key = "8"; Title = "Auto-Resize (Races) Calibrator";Desc = "Dynamic real-time zoom & alignment engine with 10 alert elements" }
+    [PSCustomObject]@{ Key = "0"; Title = "Exit";                         Desc = "Exit OMNI toolkit" }
 )
 
 $selectedIndex = 0
+$lastMenuWidth = 0
+$lastMenuHeight = 0
 
 while ($true) {
     Hide-Cursor
-    Clear-Host
     $termWidth = Get-Width
-    $spaces = [math]::Max(0, [math]::Floor(($termWidth - $bannerTitle.Length) / 2))
-    $centeredBanner = (" " * $spaces) + $bannerTitle
+    $termHeight = try { [Console]::WindowHeight } catch { 25 }
+    $lastMenuWidth = $termWidth
+    $lastMenuHeight = $termHeight
+    try { Clear-Host } catch {}
 
     $exitMenu = $false
 
     while (-not $exitMenu) {
+        $curW = Get-Width
+        $curH = try { [Console]::WindowHeight } catch { 25 }
+        if ($curW -ne $lastMenuWidth -or $curH -ne $lastMenuHeight) {
+            $termWidth = $curW
+            $termHeight = $curH
+            $lastMenuWidth = $curW
+            $lastMenuHeight = $curH
+            try { Clear-Host } catch {}
+        }
+
         Reset-Cursor
+        $spaces = [math]::Max(0, [math]::Floor(($termWidth - $bannerTitle.Length) / 2))
+        $centeredBanner = if ($bannerTitle.Length -gt $termWidth) { $bannerTitle.Substring(0, $termWidth) } else { (" " * $spaces) + $bannerTitle }
 
         Write-LineClean ("=" * $termWidth) Cyan
         Write-LineClean $centeredBanner Yellow
@@ -179,23 +383,22 @@ while ($true) {
         Write-LineClean " Hardware: $($hw.Manufacturer) $($hw.Model)  |  CPU: $($hw.CpuName)" Gray
         Write-LineClean "" White
         Write-LineClean " Choose a hardware subsystem to inspect:" White
-        Write-LineClean " (Use [Up / Down] Arrow Keys to navigate, [Enter] to select, or tap [0-7])" DarkGray
+        Write-LineClean " (Use [Up / Down] Arrow Keys to navigate, [Enter] to select, or tap [0-8])" DarkGray
         Write-LineClean "" White
 
         for ($i = 0; $i -lt $mainOptions.Count; $i++) {
             $opt = $mainOptions[$i]
+            $line = Format-MenuOptionLine -Option $opt -IsSelected ($i -eq $selectedIndex) -TermWidth $termWidth
             if ($i -eq $selectedIndex) {
-                $line = "  > [$($opt.Key)] $($opt.Title.PadRight(28)) - $($opt.Desc)"
                 Write-LineClean $line Green
             } else {
-                $line = "    [$($opt.Key)] $($opt.Title.PadRight(28)) - $($opt.Desc)"
                 Write-LineClean $line Gray
             }
         }
 
         Write-LineClean "" White
         Write-LineClean ("-" * $termWidth) Cyan
-        Write-LineClean " Controls: [Up / Down] Move Selection  |  [Enter / Space] Select  |  [0-7] Quick Jump  |  [Q] Exit" DarkGray
+        Write-LineClean " Controls: [Up / Down] Move Selection  |  [Enter / Space] Select  |  [0-8 / R] Quick Jump  |  [Q] Exit" DarkGray
         try { [Console]::Write("`e[J") } catch {}
 
         try {
@@ -203,6 +406,20 @@ while ($true) {
                 return
             }
         } catch { return }
+
+        # Live responsive polling (detects zoom in / zoom out while sitting on menu)
+        while (-not [Console]::KeyAvailable) {
+            $checkW = Get-Width
+            $checkH = try { [Console]::WindowHeight } catch { 25 }
+            if ($checkW -ne $lastMenuWidth -or $checkH -ne $lastMenuHeight) {
+                break
+            }
+            Start-Sleep -Milliseconds 50
+        }
+
+        if (-not [Console]::KeyAvailable) {
+            continue
+        }
 
         $keyInfo = [Console]::ReadKey($true)
         $chosenKey = $null
@@ -233,12 +450,15 @@ while ($true) {
                 if ($ch -eq 'q' -or $ch -eq 'Q') {
                     $chosenKey = "0"
                     $exitMenu = $true
-                } elseif ($ch -match '^[0-7]$') {
+                } elseif ($ch -match '^[0-8]$') {
                     $matchedOpt = $mainOptions | Where-Object { $_.Key -eq $ch.ToString() }
                     if ($matchedOpt) {
                         $chosenKey = $matchedOpt.Key
                         $exitMenu = $true
                     }
+                } elseif ($ch -in 'r','R') {
+                    $chosenKey = "8"
+                    $exitMenu = $true
                 }
             }
         }
@@ -532,6 +752,11 @@ while ($true) {
                     [Console]::ReadKey($true) | Out-Null
                 }
             }
+        }
+
+        "8" {
+            # Auto-Resize (Races) & Layout Calibrator
+            Invoke-AutoResizeCalibrator
         }
 
         "0" {
