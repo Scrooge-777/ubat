@@ -53,18 +53,17 @@ console = Console()
 # Global State
 RUNNING = True
 CURRENT_VIEW = "all"  # 'all', 'battery', 'cpu', 'ram', 'storage', 'processes', 'logs', 'sensors'
-REFRESH_RATES = [0.25, 0.5, 1.0, 2.0]
-REFRESH_INDEX = 1     # Default 0.5s
+REFRESH_RATES = [0.5, 1.0, 1.5, 2.0]
+REFRESH_INDEX = 1     # Default 1.0s (comfortable reading rate)
 REFRESH_RATE = REFRESH_RATES[REFRESH_INDEX]
 
 PROCESS_SORT_MODE = "cpu"    # 'cpu' or 'ram'
 PROCESS_FILTER_MODE = "all"  # 'all', 'heavy'
+CPU_MINIMIZE_MODE = False   # Toggle with [M] between essential overview and full thread grid
 
 STATUS_MESSAGE = ""
 STATUS_TIME = 0.0
 
-# Dynamic Heartbeat Indicator
-HEARTBEAT_FRAMES = ["[--o--]", "[-o---]", "[o----]", "[-o---]", "[--o--]", "[---o-]", "[----o]", "[---o-]"]
 FRAME_INDEX = 0
 
 # Hardware Profile Cache
@@ -542,31 +541,91 @@ def run_ssd_trim_optimizer(live):
     live.start()
 
 
-def build_header_panel():
-    """Creates clean, animated hardware banner with heartbeat indicator."""
-    global FRAME_INDEX
-    hb = HEARTBEAT_FRAMES[FRAME_INDEX % len(HEARTBEAT_FRAMES)]
+def run_battery_optimizer_dialog(live):
+    """Interactive Battery Optimization & Cleanup Dialog."""
+    global STATUS_MESSAGE, STATUS_TIME
+    live.stop()
+    console.clear()
+    script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "optimizer", "BatteryOptimizer.ps1")
+    console.print("\n[bold cyan]=============================================================================[/bold cyan]")
+    console.print("[bold white]            BATTERY OPTIMIZATION & CLEANUP CONTROLLER[/bold white]")
+    console.print("[bold cyan]=============================================================================[/bold cyan]")
+    console.print("  [bold yellow][1][/bold yellow] Battery & Power Optimization Audit (Audit CPU boost, ASPM & wakeups)")
+    console.print("  [bold yellow][2][/bold yellow] User-Level Battery Saver Cleanup (Purge %TEMP% & crash dumps - No Admin)")
+    console.print("  [bold yellow][3][/bold yellow] Admin-Level Deep System Cleanup & Power Tuning (Windows Temp & Update Cache)")
+    console.print("  [bold yellow][4][/bold yellow] Apply Universal Battery Profile (Cap CPU Boost 99% + PCIe ASPM)")
+    console.print("  [bold yellow][0][/bold yellow] Return to Dashboard")
+    console.print("[bold cyan]=============================================================================[/bold cyan]")
 
+    pick = console.input("\n[bold green]Select option [0-4]: [/bold green]").strip()
+    if pick == "1":
+        subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script_path, "-AuditOnly"])
+        console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
+        STATUS_MESSAGE = "Battery audit completed."
+    elif pick == "2":
+        subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script_path, "-UserOnly"])
+        console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
+        STATUS_MESSAGE = "User-level cleanup completed."
+    elif pick == "3":
+        subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script_path, "-AdminOnly"])
+        console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
+        STATUS_MESSAGE = "Admin system cleanup & power tuning completed."
+    elif pick == "4":
+        p_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "optimizer", "PowerOptimizer.ps1")
+        subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", p_path])
+        console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
+        STATUS_MESSAGE = "Universal battery power profile applied."
+    STATUS_TIME = time.time()
+    live.start()
+
+
+def build_header_panel():
+    """Creates sleek, high-density terminal hardware telemetry HUD."""
     mfg = HARDWARE_INFO["manufacturer"].upper()
     model = HARDWARE_INFO["model"].upper()
     cpu = HARDWARE_INFO["cpu_name"]
 
-    title_text = Text()
-    title_text.append(f" {hb} ", style="bold cyan")
-    title_text.append("OMNI SYSTEM HARDWARE TELEMETRY & OPTIMIZER", style="bold white on #1e293b")
-    title_text.append(f" {hb}\n", style="bold cyan")
-    title_text.append(" SYSTEM: ", style="bold cyan")
-    title_text.append(f"{mfg} {model}", style="bold yellow")
-    title_text.append("  |  CPU: ", style="bold cyan")
-    title_text.append(f"{cpu}", style="bold green")
+    uptime_str = "Active"
+    try:
+        boot = psutil.boot_time()
+        up_secs = int(time.time() - boot)
+        up_days = up_secs // 86400
+        up_hours = (up_secs % 86400) // 3600
+        up_mins = (up_secs % 3600) // 60
+        uptime_str = f"{up_days}d {up_hours:02d}h {up_mins:02d}m" if up_days > 0 else f"{up_hours}h {up_mins:02d}m"
+    except Exception:
+        pass
 
     temp_val = TELEMETRY.get("cpu_temp_c", 0.0)
-    temp_str = f"{temp_val} C" if temp_val > 0 else "Active"
-    title_text.append("  |  THERMAL: ", style="bold cyan")
-    title_text.append(f"[{temp_str}]", style="bold green")
+    temp_str = f"{temp_val:.1f} C" if temp_val > 0 else "Active"
+    freq_val = TELEMETRY.get("cpu_freq_mhz", 0)
+    freq_str = f" @ {freq_val} MHz" if freq_val > 0 else ""
 
-    title_text.append("  |  VIEW: ", style="bold cyan")
+    rate_val = REFRESH_RATE
+
+    title_text = Text()
+    title_text.append("[OMNI HARDWARE TELEMETRY HUD]", style="bold cyan")
+    title_text.append("  |  HOST: ", style="bold white")
+    title_text.append(f"{mfg} {model}", style="bold yellow")
+    title_text.append("  |  UPTIME: ", style="bold white")
+    title_text.append(f"{uptime_str}", style="bold green")
+    title_text.append("  |  VIEW: ", style="bold white")
     title_text.append(f"[{CURRENT_VIEW.upper()}]", style="bold magenta")
+    title_text.append("  |  RATE: ", style="bold white")
+    title_text.append(f"{rate_val:.1f}s", style="bold cyan")
+    title_text.append("\n")
+
+    title_text.append(" CPU: ", style="bold cyan")
+    title_text.append(f"{cpu} ({temp_str}{freq_str})", style="bold white")
+    title_text.append("  |  dGPU: ", style="bold cyan")
+    gpu_name = TELEMETRY.get("gpu_name", "NVIDIA dGPU")
+    gpu_u = TELEMETRY.get("gpu_util", 0)
+    gpu_t = TELEMETRY.get("gpu_temp", 0)
+    title_text.append(f"{gpu_name} ({gpu_u}% @ {gpu_t} C)", style="bold white")
+    title_text.append("  |  RAM: ", style="bold cyan")
+    ram_tot = HARDWARE_INFO["total_ram_gb"]
+    ram_spd = HARDWARE_INFO.get("ram_speed_mts", 5600)
+    title_text.append(f"{ram_tot:.0f}GB DDR5-{ram_spd}", style="bold white")
 
     return Panel(
         Align.center(title_text),
@@ -587,6 +646,7 @@ def build_battery_panel():
     wear = TELEMETRY["battery_wear_pct"]
     grade = TELEMETRY["battery_health_grade"]
     secs = TELEMETRY["battery_secsleft"]
+    cycles = TELEMETRY.get("battery_cycle_count", 0)
     voltage = TELEMETRY["battery_voltage_v"]
 
     batt_color = "green" if pct >= 60 else "yellow" if pct >= 30 else "red"
@@ -599,12 +659,13 @@ def build_battery_panel():
     table.add_row("Power Source", power_src)
     table.add_row("Charge Level", make_progress_bar(pct, width=16, color=batt_color))
     table.add_row("Health Grade", f"[bold green]{grade}[/bold green] (Wear: [bold yellow]{wear}%[/bold yellow])")
+    table.add_row("Cycle Count", f"[bold white]{cycles}[/bold white] / 500 [dim](Rating: Optimal)[/dim]")
     table.add_row("Capacity", f"{full_mwh:,} mWh [dim](Design: {design_mwh:,})[/dim]")
-    table.add_row("Remaining", f"{rem_mwh:,} mWh [dim]({voltage}V pack)[/dim]")
+    table.add_row("Degradation", f"{max(0, design_mwh - full_mwh):,} mWh [dim](Pack: {voltage}V)[/dim]")
     
     rate_str = f"{wattage:.2f} W" if wattage > 0 else "0.00 W (Idle / Full)"
     table.add_row("Drain/Charge", f"[bold magenta]{rate_str}[/bold magenta]")
-    table.add_row("Estimated Time", format_secs(secs) if not plugged else "AC Connected (Protected)")
+    table.add_row("Optimization", "[bold green][OPTIMAL][/bold green] [dim](Press O to Clean)[/dim]")
 
     return Panel(table, title="[bold cyan]BATTERY & POWER HEALTH[/bold cyan]", border_style="cyan", box=box.ROUNDED)
 
@@ -630,12 +691,18 @@ def build_cpu_ram_panel():
     table.add_row("CPU Load", make_progress_bar(cpu_pct, width=14, color=cpu_color))
     if cpu_temp > 0 or cpu_freq > 0:
         t_col = "red" if cpu_temp >= 80 else "yellow" if cpu_temp >= 65 else "green"
-        table.add_row("CPU Thermals", f"[{t_col}]{cpu_temp} C[/{t_col}] [dim]@ {cpu_freq} MHz[/dim]")
+        headroom = max(0.0, round(100.0 - cpu_temp, 1))
+        table.add_row("CPU Thermals", f"[{t_col}]{cpu_temp:.1f} C[/{t_col}] [dim]@ {cpu_freq} MHz (Head: {headroom} C)[/dim]")
 
     table.add_row("RAM Usage", make_progress_bar(ram_pct, width=14, color=ram_color))
     
     speed_tag = f" [dim](DDR5-{ram_speed} MT/s)[/dim]" if ram_speed > 0 else ""
     table.add_row("Memory Vol", f"[bold white]{ram_used:.1f} GB[/bold white] / [dim]{ram_total:.1f} GB[/dim]{speed_tag}")
+
+    swap_u = TELEMETRY.get("swap_used_gb", 0.0)
+    swap_t = TELEMETRY.get("swap_total_gb", 0.0)
+    if swap_t > 0:
+        table.add_row("Commit Limit", f"[bold white]{swap_u:.1f} GB[/bold white] / [dim]{swap_t:.1f} GB virtual[/dim]")
 
     bench = TELEMETRY.get("benchmarks", {})
     if bench.get("cpu_mt_score", 0) > 0:
@@ -774,18 +841,20 @@ def build_battery_focus_view():
     table.add_row("Live Charge Level", make_progress_bar(pct, width=28), "OPTIMAL")
     table.add_row("Full Charge Capacity", f"{full_mwh:,} mWh (Factory: {design_mwh:,} mWh)", "HEALTHY")
     table.add_row("Remaining Pack Volume", f"{rem_mwh:,} mWh", "NORMAL")
-    table.add_row("Hardware Wear Level", f"{wear}% Degradation", f"GRADE {grade}")
-    table.add_row("Cycle Life Count", f"{cycles} / 500 Rated Cycles", f"{round((cycles/500)*100, 1)}% Used")
+    table.add_row("Hardware Wear Level", f"{wear}% Degradation ({max(0, design_mwh - full_mwh):,} mWh lost)", f"GRADE {grade}")
+    table.add_row("Cycle Life Count", f"{cycles} / 500 Rated Cycles", f"{round((cycles/500)*100, 1)}% Consumed")
     table.add_row("Pack Terminal Voltage", f"{voltage} Volts", "BALANCED")
     table.add_row("Live Power Draw", f"{wattage:.2f} Watts", "MEASURED")
     table.add_row("4-Hour Target Budget", f"Keep under {budget_w} Watts for 4h battery", "BUDGET TARGET")
     table.add_row("Estimated Runtime", format_secs(secs), "ACTIVE")
+    table.add_row("Optimizer & Cleanup", "Press [bold yellow][O][/bold yellow] or [bold yellow][C][/bold yellow] to run Battery Cleanup (User/Admin)", "[bold cyan]AVAILABLE[/bold cyan]")
 
-    return Panel(table, title="[bold cyan]DEEP BATTERY HEALTH & POWER CALIBRATION[/bold cyan]", border_style="cyan", box=box.ROUNDED)
+    return Panel(table, title="[bold cyan]DEEP BATTERY HEALTH, TRUE CALIBRATION & OPTIMIZER[/bold cyan]", border_style="cyan", box=box.ROUNDED)
 
 
 def build_cpu_focus_view():
-    """Deep CPU & core analyzer view."""
+    """Deep CPU & core analyzer view with Minimized and Expanded modes."""
+    global CPU_MINIMIZE_MODE
     cpu_pct = TELEMETRY["cpu_pct"]
     cores = TELEMETRY["cpu_per_core"]
     logical = HARDWARE_INFO["cpu_cores_logical"]
@@ -795,6 +864,9 @@ def build_cpu_focus_view():
     board = HARDWARE_INFO.get("board_model", "8D3F")
     bios = HARDWARE_INFO.get("bios_version", "F.14")
     mfg = HARDWARE_INFO.get("board_mfg", "HP")
+
+    headroom = max(0.0, round(100.0 - cpu_temp, 1)) if cpu_temp > 0 else 50.0
+    throt_status = "[bold red]THROTTLED (PROCHOT)[/bold red]" if cpu_temp >= 95.0 else "[bold green]NOMINAL (Clear)[/bold green]"
 
     table = Table(box=box.ROUNDED, expand=True, padding=(0, 2))
     table.add_column("METRIC", style="bold cyan", width=24)
@@ -806,7 +878,8 @@ def build_cpu_focus_view():
     table.add_row("Overall CPU Load", make_progress_bar(cpu_pct, width=28))
     if cpu_temp > 0 or cpu_freq > 0:
         t_col = "red" if cpu_temp >= 80 else "yellow" if cpu_temp >= 65 else "green"
-        table.add_row("Thermal Zone & Clock", f"[{t_col}]{cpu_temp} C[/{t_col}] [dim]@ {cpu_freq} MHz Average Clock Frequency[/dim]")
+        table.add_row("Thermals & Headroom", f"[{t_col}]{cpu_temp:.1f} C[/{t_col}] [dim]@ {cpu_freq} MHz (Headroom: {headroom} C to TjMax)[/dim]")
+        table.add_row("Throttle Protection", throt_status)
 
     bench = TELEMETRY.get("benchmarks", {})
     if bench.get("cpu_mt_score", 0) > 0:
@@ -816,6 +889,13 @@ def build_cpu_focus_view():
         table.add_row("Stress Test Result", f"Peak: [yellow]{bench['stress_peak_c']} C[/yellow] (+{bench['stress_delta_c']} C) | State: {throt_badge}")
     else:
         table.add_row("Benchmark / Stress", "Press [bold yellow][B][/bold yellow] to run Multi-Core Stress Test or CPU Benchmark")
+
+    mode_label = "MINIMIZED (Clean Overview)" if CPU_MINIMIZE_MODE else "EXPANDED (Per-Thread Matrix)"
+    table.add_row("View Layout Mode", f"[bold white]{mode_label}[/bold white] - Press [bold yellow][M][/bold yellow] to toggle")
+
+    if CPU_MINIMIZE_MODE:
+        # Minimized / User-Friendly Mode: clean single panel without cluttered thread matrix
+        return Panel(table, title="[bold cyan]CPU & PROCESSOR ESSENTIAL OVERVIEW [MINIMIZED - PRESS M TO EXPAND][/bold cyan]", border_style="cyan", box=box.ROUNDED)
 
     core_table = Table(box=box.SIMPLE, expand=True)
     for col_idx in range(4):
@@ -835,8 +915,8 @@ def build_cpu_focus_view():
 
     content = Layout()
     content.split_column(
-        Layout(Panel(table, box=box.ROUNDED, border_style="cyan"), size=8),
-        Layout(Panel(core_table, title="[bold cyan]PER-THREAD REAL-TIME ACTIVITY[/bold cyan]", box=box.ROUNDED, border_style="cyan")),
+        Layout(Panel(table, box=box.ROUNDED, border_style="cyan"), size=10),
+        Layout(Panel(core_table, title="[bold cyan]PER-THREAD REAL-TIME ACTIVITY (PRESS M TO MINIMIZE)[/bold cyan]", box=box.ROUNDED, border_style="cyan")),
         Layout(build_process_table(limit=6), size=9),
     )
     return content
@@ -1131,14 +1211,14 @@ def build_footer_panel():
     """Interactive hotkey footer bar with deep sensors integration."""
     global STATUS_MESSAGE, STATUS_TIME
 
-    rate_str = f"{REFRESH_RATE}s"
+    rate_str = f"{REFRESH_RATE:.1f}s"
 
     footer_text = Text()
     footer_text.append(" [<-/-> or 1-8] Views ", style="bold white on #2563eb")
-    footer_text.append(" [8] Sensors ", style="bold white on #0891b2")
+    footer_text.append(" [M] Min/Max ", style="bold white on #0891b2")
     footer_text.append(" [B] Bench/Stress ", style="bold white on #b45309")
     footer_text.append(" [T] SSD TRIM ", style="bold white on #059669")
-    footer_text.append(" [O] Logs Folder ", style="bold white on #7c3aed")
+    footer_text.append(" [O/C] Battery Clean/Opt ", style="bold white on #7c3aed")
     footer_text.append(f" [R] Rate: {rate_str} ", style="bold white on #0284c7")
     footer_text.append(f" [S] Sort: {PROCESS_SORT_MODE.upper()} ", style="bold white on #475569")
     footer_text.append(f" [F] Filter: {PROCESS_FILTER_MODE.upper()} ", style="bold white on #334155")
@@ -1730,11 +1810,19 @@ def main():
                     elif key in [b'b', b'B']:
                         run_interactive_benchmark(live)
                         view_changed = True
+                    elif key in [b'm', b'M']:
+                        CPU_MINIMIZE_MODE = not CPU_MINIMIZE_MODE
+                        STATUS_MESSAGE = f"CPU view: {'MINIMIZED (Clean Overview)' if CPU_MINIMIZE_MODE else 'EXPANDED (Per-Thread Matrix)'}"
+                        STATUS_TIME = time.time()
+                        view_changed = True
                     elif key in [b't', b'T']:
                         run_ssd_trim_optimizer(live)
                         view_changed = True
-                    elif key in [b'o', b'O']:
-                        open_logs_folder()
+                    elif key in [b'o', b'O', b'c', b'C']:
+                        if CURRENT_VIEW == "logs":
+                            open_logs_folder()
+                        else:
+                            run_battery_optimizer_dialog(live)
                         view_changed = True
                     elif key in [b'k', b'K']:
                         handle_kill_process_dialog(live)

@@ -21,7 +21,7 @@ $laptopTitle = if ($rawModel -match [regex]::Escape($rawMfg)) {
 } else {
     "$rawMfg $rawModel".ToUpper()
 }
-$bannerTitle = "OMNI - SYSTEM HARDWARE TELEMETRY & OPTIMIZER ($laptopTitle)"
+$bannerTitle = "OMNI HARDWARE TELEMETRY & SYSTEM MONITOR - $laptopTitle"
 
 function Hide-Cursor {
     try { [Console]::CursorVisible = $false } catch {}
@@ -344,7 +344,6 @@ $mainOptions = @(
     [PSCustomObject]@{ Key = "5"; Title = "Process Manager Hub";          Desc = "Fast resource monitor & interactive PID killer" }
     [PSCustomObject]@{ Key = "6"; Title = "Session Logs & Reports";       Desc = "In-terminal session logs, analysis reports & folder access" }
     [PSCustomObject]@{ Key = "7"; Title = "Benchmark & Stress Testing Hub";Desc = "NVMe read, CPU/GPU/RAM burn-in stress tests & bandwidth" }
-    [PSCustomObject]@{ Key = "8"; Title = "Auto-Resize (Races) Calibrator";Desc = "Dynamic real-time zoom & alignment engine with 10 alert elements" }
     [PSCustomObject]@{ Key = "0"; Title = "Exit";                         Desc = "Exit OMNI toolkit" }
 )
 
@@ -383,7 +382,7 @@ while ($true) {
         Write-LineClean " Hardware: $($hw.Manufacturer) $($hw.Model)  |  CPU: $($hw.CpuName)" Gray
         Write-LineClean "" White
         Write-LineClean " Choose a hardware subsystem to inspect:" White
-        Write-LineClean " (Use [Up / Down] Arrow Keys to navigate, [Enter] to select, or tap [0-8])" DarkGray
+        Write-LineClean " (Use [Up / Down] Arrow Keys to navigate, [Enter] to select, or tap [0-7])" DarkGray
         Write-LineClean "" White
 
         for ($i = 0; $i -lt $mainOptions.Count; $i++) {
@@ -398,7 +397,7 @@ while ($true) {
 
         Write-LineClean "" White
         Write-LineClean ("-" * $termWidth) Cyan
-        Write-LineClean " Controls: [Up / Down] Move Selection  |  [Enter / Space] Select  |  [0-8 / R] Quick Jump  |  [Q] Exit" DarkGray
+        Write-LineClean " Controls: [Up / Down] Move Selection  |  [Enter / Space] Select  |  [0-7] Quick Jump  |  [Q] Exit" DarkGray
         try { [Console]::Write("`e[J") } catch {}
 
         try {
@@ -450,15 +449,12 @@ while ($true) {
                 if ($ch -eq 'q' -or $ch -eq 'Q') {
                     $chosenKey = "0"
                     $exitMenu = $true
-                } elseif ($ch -match '^[0-8]$') {
+                } elseif ($ch -match '^[0-7]$') {
                     $matchedOpt = $mainOptions | Where-Object { $_.Key -eq $ch.ToString() }
                     if ($matchedOpt) {
                         $chosenKey = $matchedOpt.Key
                         $exitMenu = $true
                     }
-                } elseif ($ch -in 'r','R') {
-                    $chosenKey = "8"
-                    $exitMenu = $true
                 }
             }
         }
@@ -479,42 +475,30 @@ while ($true) {
         }
 
         "2" {
-            # Storage & SSD Hub (Option inside an option)
+            # Storage & SSD Hub (Consolidated options)
             $subOpts = @(
-                [PSCustomObject]@{ Key = "1"; Title = "All-in-One Storage Diagnostics"; Desc = "Complete physical drive, partitions & wear overview" }
-                [PSCustomObject]@{ Key = "2"; Title = "Partitions & File Systems Table";  Desc = "Detailed breakdown of C:, G:, S: labels & space" }
-                [PSCustomObject]@{ Key = "3"; Title = "Physical SSD SMART Health & Wear";Desc = "Drive model, temperature & degradation level %" }
-                [PSCustomObject]@{ Key = "4"; Title = "NVMe Storage Read Benchmark";     Desc = "Benchmark sequential & 4K random read throughput in MB/s" }
-                [PSCustomObject]@{ Key = "5"; Title = "Run SSD TRIM Optimizer";          Desc = "Execute volume ReTrim & write wear reduction" }
+                [PSCustomObject]@{ Key = "1"; Title = "Storage & SSD Diagnostics";       Desc = "Complete physical drive, partitions, file systems & SMART wear %" }
+                [PSCustomObject]@{ Key = "2"; Title = "NVMe Storage Read Benchmark";     Desc = "Benchmark sequential & 4K random read throughput in MB/s" }
+                [PSCustomObject]@{ Key = "3"; Title = "Run SSD TRIM Optimizer";          Desc = "Execute volume ReTrim & write wear reduction (Press R or T)" }
                 [PSCustomObject]@{ Key = "0"; Title = "Return to Main Menu";             Desc = "Back to subsystem launcher" }
             )
             $subPick = Show-SubMenu -HubTitle "STORAGE & NVME SSD HUB" -Options $subOpts
-            Clear-Host
+            try { Clear-Host } catch {}
             switch ($subPick) {
                 "1" {
                     & "$ScriptDir\diagnostics\SsdDiagnostics.ps1"
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
+                    try { [Console]::ReadKey($true) | Out-Null } catch {}
                 }
                 "2" {
-                    & "$ScriptDir\diagnostics\SsdDiagnostics.ps1"
-                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
-                }
-                "3" {
-                    & "$ScriptDir\diagnostics\SsdDiagnostics.ps1"
-                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
-                }
-                "4" {
                     & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -StorageRead
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
+                    try { [Console]::ReadKey($true) | Out-Null } catch {}
                 }
-                "5" {
+                { $_ -in "3", "t", "T", "r", "R" } {
                     & "$ScriptDir\optimizer\SsdOptimizer.ps1"
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
+                    try { [Console]::ReadKey($true) | Out-Null } catch {}
                 }
             }
         }
@@ -522,26 +506,30 @@ while ($true) {
         "3" {
             # Battery & Health Hub (Option inside an option)
             $subOpts = @(
-                [PSCustomObject]@{ Key = "1"; Title = "All-in-One Battery Diagnostics"; Desc = "Calibrated health %, wear %, cycles & pack voltage" }
-                [PSCustomObject]@{ Key = "2"; Title = "Battery Life Optimizer";         Desc = "Safe CPU boost capping (99%) & PCIe ASPM tuning" }
-                [PSCustomObject]@{ Key = "3"; Title = "Start Background Session Logger";Desc = "Begin silent 30s telemetry recording to logs/" }
-                [PSCustomObject]@{ Key = "4"; Title = "Stop Background Session Logger"; Desc = "Terminate active background recording daemon" }
+                [PSCustomObject]@{ Key = "1"; Title = "All-in-One Battery Diagnostics";  Desc = "Calibrated health %, wear %, cycle count & terminal voltage" }
+                [PSCustomObject]@{ Key = "2"; Title = "Battery Optimization & Cleanup";  Desc = "Power audit, User temp cleanup & Admin system cleanup" }
+                [PSCustomObject]@{ Key = "3"; Title = "Apply Universal Battery Profile"; Desc = "Cap CPU boost to 99% on battery & enable PCIe ASPM" }
+                [PSCustomObject]@{ Key = "4"; Title = "Start Background Session Logger"; Desc = "Begin silent 30s telemetry recording to logs/" }
+                [PSCustomObject]@{ Key = "5"; Title = "Stop Background Session Logger";  Desc = "Terminate active background recording daemon" }
                 [PSCustomObject]@{ Key = "0"; Title = "Return to Main Menu";             Desc = "Back to subsystem launcher" }
             )
             $subPick = Show-SubMenu -HubTitle "BATTERY & HEALTH DIAGNOSTICS HUB" -Options $subOpts
-            Clear-Host
+            try { Clear-Host } catch {}
             switch ($subPick) {
                 "1" {
                     & "$ScriptDir\core\BatteryHealthModel.ps1"
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
+                    try { [Console]::ReadKey($true) | Out-Null } catch {}
                 }
                 "2" {
-                    & "$ScriptDir\optimizer\PowerOptimizer.ps1"
-                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
+                    & "$ScriptDir\optimizer\BatteryOptimizer.ps1"
                 }
                 "3" {
+                    & "$ScriptDir\optimizer\PowerOptimizer.ps1"
+                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                    try { [Console]::ReadKey($true) | Out-Null } catch {}
+                }
+                "4" {
                     Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$ScriptDir\logger\BackgroundLogger.ps1`""
                     Write-Host "================================================================================" -ForegroundColor Cyan
                     Write-Host " [OK] Background Logger started in background." -ForegroundColor Green
@@ -549,78 +537,61 @@ while ($true) {
                     Write-Host "================================================================================" -ForegroundColor Cyan
                     Start-Sleep -Seconds 2
                 }
-                "4" {
+                "5" {
                     & "$ScriptDir\logger\StopLogger.ps1"
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
+                    try { [Console]::ReadKey($true) | Out-Null } catch {}
                 }
             }
         }
 
         "4" {
-            # CPU & Memory Hub (Option inside an option)
+            # CPU & Memory Hub (User-friendly consolidated structure)
             $subOpts = @(
-                [PSCustomObject]@{ Key = "1"; Title = "All-in-One CPU & RAM Status";    Desc = "Overall load %, clocks, cores, DDR5 speed & modules" }
-                [PSCustomObject]@{ Key = "2"; Title = "Live CPU Clocks & Thermal Zones";Desc = "Real-time MHz per core group and ACPI temperatures" }
-                [PSCustomObject]@{ Key = "3"; Title = "Multi-Core CPU Stress Test";     Desc = "Stress all CPU threads with live thermal rise tracking" }
-                [PSCustomObject]@{ Key = "4"; Title = "CPU Computational Benchmark";     Desc = "Standardized mathematical benchmark scoring" }
-                [PSCustomObject]@{ Key = "5"; Title = "RAM Memory Bandwidth Benchmark"; Desc = "Measure sequential memory read & copy rate in GB/s" }
-                [PSCustomObject]@{ Key = "6"; Title = "Dedicated Physical RAM Stress";   Desc = "Saturate DDR5 RAM to 95% with active memory bus churn" }
-                [PSCustomObject]@{ Key = "7"; Title = "Measure Instantaneous CPU Spikes";Desc = "Detect per-process CPU spikes in real-time" }
-                [PSCustomObject]@{ Key = "8"; Title = "Cap CPU Boost Frequency (99%)";  Desc = "Disable thermal throttling spikes safely" }
+                [PSCustomObject]@{ Key = "1"; Title = "Essential CPU & RAM Overview";    Desc = "Hardware architecture, clocks, thermals & DDR5 speed" }
+                [PSCustomObject]@{ Key = "2"; Title = "Advanced Multi-Core Analysis";    Desc = "Per-thread core loads, ACPI zones & instantaneous spikes" }
+                [PSCustomObject]@{ Key = "3"; Title = "CPU & Memory Benchmarks";         Desc = "Single/Multi-thread compute scoring & RAM bandwidth GB/s" }
+                [PSCustomObject]@{ Key = "4"; Title = "CPU & RAM Stress Testing";        Desc = "10s Multi-core thermal stress & 96% physical RAM burn-in" }
+                [PSCustomObject]@{ Key = "5"; Title = "Power & Frequency Limiter";       Desc = "Cap CPU Turbo Boost to 99% to eliminate thermal throttling" }
                 [PSCustomObject]@{ Key = "0"; Title = "Return to Main Menu";             Desc = "Back to subsystem launcher" }
             )
-            $subPick = Show-SubMenu -HubTitle "CPU & MEMORY HUB" -Options $subOpts
-            try { Clear-Host } catch { }
+            $subPick = Show-SubMenu -HubTitle "CPU & MEMORY HUB (ESSENTIAL OVERVIEW)" -Options $subOpts
+            try { Clear-Host } catch {}
             switch ($subPick) {
                 "1" {
                     & "$ScriptDir\core\HardwareProfile.ps1" -ShowUi
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
+                    try { [Console]::ReadKey($true) | Out-Null } catch {}
                 }
                 "2" {
-                    Write-Host "================================================================================" -ForegroundColor Cyan
-                    Write-Host "             LIVE CPU CLOCKS & THERMAL ZONE MONITOR" -ForegroundColor Yellow
-                    Write-Host "================================================================================" -ForegroundColor Cyan
-                    $tz = Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction SilentlyContinue
-                    $temp = if ($tz -and $tz.CurrentTemperature) { [math]::Round(($tz.CurrentTemperature - 2732) / 10, 1) } else { 0 }
-                    $freqSamples = (Get-Counter '\Processor Information(*)\Processor Frequency' -ErrorAction SilentlyContinue).CounterSamples
-                    $avg = $freqSamples | Where-Object { $_.InstanceName -eq '_total' } | Select-Object -ExpandProperty CookedValue
-                    Write-Host " ACPI Thermal Zone : $temp C" -ForegroundColor White
-                    Write-Host " Average CPU Clock : $([math]::Round($avg)) MHz" -ForegroundColor White
-                    Write-Host "================================================================================" -ForegroundColor Cyan
-                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
-                }
-                "3" {
-                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -CpuStress -StressDuration 10
-                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
-                }
-                "4" {
-                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -CpuBench
-                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
-                }
-                "5" {
-                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -RamBench
-                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
-                }
-                "6" {
-                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -RamStress -StressDuration 10
-                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
-                }
-                "7" {
                     & "$ScriptDir\diagnostics\MeasureCpuDelta.ps1"
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
+                    try { [Console]::ReadKey($true) | Out-Null } catch {}
                 }
-                "8" {
+                "3" {
+                    Write-Host "================================================================================" -ForegroundColor Cyan
+                    Write-Host "           CPU COMPUTATIONAL & RAM MEMORY BANDWIDTH BENCHMARK" -ForegroundColor Yellow
+                    Write-Host "================================================================================" -ForegroundColor Cyan
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -CpuBench
+                    Write-Host ""
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -RamBench
+                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                    try { [Console]::ReadKey($true) | Out-Null } catch {}
+                }
+                "4" {
+                    Write-Host "================================================================================" -ForegroundColor Cyan
+                    Write-Host "              CPU MULTI-CORE & RAM 96% SATURATION BURN-IN" -ForegroundColor Yellow
+                    Write-Host "================================================================================" -ForegroundColor Cyan
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -CpuStress -StressDuration 10
+                    Write-Host ""
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -RamStress -StressDuration 10
+                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                    try { [Console]::ReadKey($true) | Out-Null } catch {}
+                }
+                "5" {
                     & "$ScriptDir\optimizer\PowerOptimizer.ps1"
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
+                    try { [Console]::ReadKey($true) | Out-Null } catch {}
                 }
             }
         }
@@ -752,11 +723,6 @@ while ($true) {
                     [Console]::ReadKey($true) | Out-Null
                 }
             }
-        }
-
-        "8" {
-            # Auto-Resize (Races) & Layout Calibrator
-            Invoke-AutoResizeCalibrator
         }
 
         "0" {

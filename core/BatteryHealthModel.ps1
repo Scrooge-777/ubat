@@ -135,7 +135,7 @@ function Show-BatteryHealthReport {
         Write-Host "   * Battery is in pristine condition. Enable HP/OEM Battery Care (80% charge limit)" -ForegroundColor White
         Write-Host "     to preserve cell longevity when plugged into wall power for long periods." -ForegroundColor Gray
     }
-    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Host ("=" * $w) -ForegroundColor Cyan
 }
 
 if ($MyInvocation.InvocationName -ne '.') {

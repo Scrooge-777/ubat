@@ -114,7 +114,7 @@ Write-Host "   Storage Power State: $(if ($activeTimePct -le 5) { 'Autonomous Po
 
 Write-Host ""
 Write-Host ("-" * $w) -ForegroundColor Cyan
-Write-Host " Options: [T] Run SSD TRIM Optimizer  |  [R] Refresh  |  [Enter] Return" -ForegroundColor Yellow
+Write-Host " Options: [T / R] Run SSD TRIM Optimizer  |  [Enter / Space] Return" -ForegroundColor Yellow
 Write-Host ("=" * $w) -ForegroundColor Cyan
 
 # Non-interactive check
@@ -123,8 +123,8 @@ try {
 } catch { return }
 
 $key = [Console]::ReadKey($true)
-if ($key.Key -eq 'T' -or $key.KeyChar -eq 't') {
+if ($key.KeyChar -in 't','T','r','R') {
     & "$ScriptDir\optimizer\SsdOptimizer.ps1"
     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-    [Console]::ReadKey($true) | Out-Null
+    try { [Console]::ReadKey($true) | Out-Null } catch {}
 }
