@@ -10,6 +10,7 @@ param(
     [switch]$StorageRead,
     [switch]$CpuStress,
     [switch]$GpuStress,
+    [switch]$RamStress,
     [switch]$SystemStress,
     [switch]$ManualStress,
     [string]$Target = "system",
@@ -245,13 +246,30 @@ function Test-GpuStress {
     Write-Host "================================================================================" -ForegroundColor Cyan
 }
 
+function Test-RamStress {
+    param([int]$Duration = 10)
+
+    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Host "         DEDICATED RAM MEMORY SATURATION STRESS TEST (DDR5)" -ForegroundColor Yellow
+    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Host " Allocating physical memory to 90-95% capacity & saturating DDR5 memory bus..." -ForegroundColor Gray
+
+    $pyEngine = Join-Path $PSScriptRoot "bench_engine.py"
+    if (Test-Path $pyEngine) {
+        python $pyEngine --ramstress $Duration
+    } else {
+        Write-Host " RAM stress benchmark engine unavailable." -ForegroundColor Red
+    }
+    Write-Host "================================================================================" -ForegroundColor Cyan
+}
+
 function Test-SystemStress {
     param([int]$Duration = 10)
 
     Write-Host "================================================================================" -ForegroundColor Cyan
     Write-Host "       COMBINED FULL-SYSTEM BURN-IN STRESS TEST (CPU + GPU + RAM)" -ForegroundColor Yellow
     Write-Host "================================================================================" -ForegroundColor Cyan
-    Write-Host " Saturating all CPU threads and dedicated GPU CUDA cores simultaneously..." -ForegroundColor Gray
+    Write-Host " Saturating CPU threads, GPU CUDA cores, and physical RAM simultaneously..." -ForegroundColor Gray
 
     $pyEngine = Join-Path $PSScriptRoot "bench_engine.py"
     if (Test-Path $pyEngine) {
@@ -269,6 +287,7 @@ function Test-ManualStress {
     $title = switch ($tgt) {
         "cpu" { "MULTI-CORE CPU CONTINUOUS STRESS TEST" }
         "gpu" { "DEDICATED GPU (RTX 5050) CONTINUOUS STRESS TEST" }
+        "ram" { "DEDICATED PHYSICAL RAM SATURATION STRESS TEST" }
         default { "COMBINED FULL-SYSTEM CONTINUOUS BURN-IN (CPU + GPU + RAM)" }
     }
 
@@ -284,7 +303,7 @@ function Test-ManualStress {
         Write-Host "   - Press [ENTER] or [SPACE] to START stress testing." -ForegroundColor Green
         Write-Host "   - Once running, press [SPACE], [ENTER], [Q], or [ESC] to STOP at any time." -ForegroundColor Yellow
         Write-Host "--------------------------------------------------------------------------------" -ForegroundColor Cyan
-        Write-Host " Press [ENTER] or [SPACE] to start continuous CPU stress..." -ForegroundColor Green
+        Write-Host " Press [ENTER] or [SPACE] to start continuous workload..." -ForegroundColor Green
         while ($true) {
             if ([Console]::KeyAvailable) {
                 $k = [Console]::ReadKey($true)
@@ -326,6 +345,8 @@ if ($StorageRead) {
     Test-CpuStress -Duration $StressDuration
 } elseif ($GpuStress) {
     Test-GpuStress -Duration $StressDuration
+} elseif ($RamStress) {
+    Test-RamStress -Duration $StressDuration
 } elseif ($SystemStress) {
     Test-SystemStress -Duration $StressDuration
 } elseif ($ManualStress) {
@@ -344,6 +365,8 @@ if ($StorageRead) {
     Test-CpuStress -Duration 5
     Write-Host ""
     Test-GpuStress -Duration 5
+    Write-Host ""
+    Test-RamStress -Duration 5
 } else {
     # Interactive Console Menu
     Write-Host "================================================================================" -ForegroundColor Cyan
@@ -352,35 +375,39 @@ if ($StorageRead) {
     Write-Host " [1] NVMe Storage Read Benchmark (Sequential & 4K Random MB/s)" -ForegroundColor White
     Write-Host " [2] Multi-Core CPU Thermal Stress Test (10s with Throttle Tracking)" -ForegroundColor White
     Write-Host " [3] Dedicated GPU Hardware Stress Test (10s at 100% Load & 2.7+ GHz)" -ForegroundColor White
-    Write-Host " [4] Combined Full-System Burn-In Stress Test (CPU + GPU + RAM)" -ForegroundColor White
-    Write-Host " [5] Manual Start / Stop Continuous Stress Test (Live Keypress Start/Stop)" -ForegroundColor White
-    Write-Host " [6] CPU Computational Performance Benchmark (Single/Multi-Thread)" -ForegroundColor White
-    Write-Host " [7] RAM Memory Bandwidth Benchmark (GB/s Read Throughput)" -ForegroundColor White
-    Write-Host " [8] Full Benchmark & Stress Suite (All-in-One)" -ForegroundColor White
+    Write-Host " [4] Dedicated Physical RAM Stress Test (10s at 95% Saturation & Bus Churn)" -ForegroundColor White
+    Write-Host " [5] Combined Full-System Burn-In Stress Test (CPU + GPU + RAM to 95%)" -ForegroundColor White
+    Write-Host " [6] Manual Start / Stop Continuous Stress Test (Live Keypress Start/Stop)" -ForegroundColor White
+    Write-Host " [7] CPU Computational Performance Benchmark (Single/Multi-Thread)" -ForegroundColor White
+    Write-Host " [8] RAM Memory Bandwidth Benchmark (GB/s Read Throughput)" -ForegroundColor White
+    Write-Host " [9] Full Benchmark & Stress Suite (All-in-One)" -ForegroundColor White
     Write-Host " [0] Return / Exit" -ForegroundColor DarkGray
     Write-Host "--------------------------------------------------------------------------------" -ForegroundColor Cyan
-    $choice = Read-Host " Select an option [0-8]"
+    $choice = Read-Host " Select an option [0-9]"
     switch ($choice) {
         "1" { Test-StorageRead }
         "2" { Test-CpuStress -Duration 10 }
         "3" { Test-GpuStress -Duration 10 }
-        "4" { Test-SystemStress -Duration 10 }
-        "5" { 
+        "4" { Test-RamStress -Duration 10 }
+        "5" { Test-SystemStress -Duration 10 }
+        "6" { 
             Write-Host "`n Select Target Component for Manual Start / Stop:" -ForegroundColor Yellow
-            Write-Host " [1] Combined Full-System Burn-In (CPU + GPU + RAM)" -ForegroundColor White
-            Write-Host " [2] Dedicated GPU Stress (RTX 5050 CUDA 100%)" -ForegroundColor White
-            Write-Host " [3] Multi-Core CPU Thermal Stress" -ForegroundColor White
+            Write-Host " [1] Combined Full-System Burn-In (CPU + GPU + RAM to 95%)" -ForegroundColor White
+            Write-Host " [2] Dedicated GPU Stress (RTX 5050 CUDA 100% @ 2.7+ GHz)" -ForegroundColor White
+            Write-Host " [3] Multi-Core CPU Thermal Stress (All 24 Logical Threads)" -ForegroundColor White
+            Write-Host " [4] Dedicated Physical RAM Saturation (Fill RAM to 95%+)" -ForegroundColor White
             Write-Host " [0] Cancel" -ForegroundColor DarkGray
-            $tgtPick = Read-Host " Select target [0-3]"
+            $tgtPick = Read-Host " Select target [0-4]"
             switch ($tgtPick) {
                 "1" { Test-ManualStress -TargetComponent "system" }
                 "2" { Test-ManualStress -TargetComponent "gpu" }
                 "3" { Test-ManualStress -TargetComponent "cpu" }
+                "4" { Test-ManualStress -TargetComponent "ram" }
             }
         }
-        "6" { Test-CpuBenchmark }
-        "7" { Test-RamBandwidth }
-        "8" { 
+        "7" { Test-CpuBenchmark }
+        "8" { Test-RamBandwidth }
+        "9" { 
             Test-StorageRead
             Write-Host ""
             Test-RamBandwidth
@@ -390,6 +417,8 @@ if ($StorageRead) {
             Test-CpuStress -Duration 5
             Write-Host ""
             Test-GpuStress -Duration 5
+            Write-Host ""
+            Test-RamStress -Duration 5
         }
     }
 }

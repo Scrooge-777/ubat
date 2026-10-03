@@ -155,7 +155,7 @@ $mainOptions = @(
     [PSCustomObject]@{ Key = "4"; Title = "CPU & Memory Hub";          Desc = "Multi-thread core loads, RAM volume & frequency limits" }
     [PSCustomObject]@{ Key = "5"; Title = "Process Manager Hub";       Desc = "Fast resource monitor & interactive PID killer" }
     [PSCustomObject]@{ Key = "6"; Title = "Session Logs & Reports";    Desc = "In-terminal session logs, analysis reports & folder access" }
-    [PSCustomObject]@{ Key = "7"; Title = "Benchmark & Stress Testing Hub";Desc = "Storage read benchmark, CPU stress tests & RAM bandwidth" }
+    [PSCustomObject]@{ Key = "7"; Title = "Benchmark & Stress Testing Hub";Desc = "NVMe read, CPU/GPU/RAM burn-in stress tests & bandwidth" }
     [PSCustomObject]@{ Key = "0"; Title = "Exit";                      Desc = "Exit OMNI toolkit" }
 )
 
@@ -345,12 +345,13 @@ while ($true) {
                 [PSCustomObject]@{ Key = "3"; Title = "Multi-Core CPU Stress Test";     Desc = "Stress all CPU threads with live thermal rise tracking" }
                 [PSCustomObject]@{ Key = "4"; Title = "CPU Computational Benchmark";     Desc = "Standardized mathematical benchmark scoring" }
                 [PSCustomObject]@{ Key = "5"; Title = "RAM Memory Bandwidth Benchmark"; Desc = "Measure sequential memory read & copy rate in GB/s" }
-                [PSCustomObject]@{ Key = "6"; Title = "Measure Instantaneous CPU Spikes";Desc = "Detect per-process CPU spikes in real-time" }
-                [PSCustomObject]@{ Key = "7"; Title = "Cap CPU Boost Frequency (99%)";  Desc = "Disable thermal throttling spikes safely" }
+                [PSCustomObject]@{ Key = "6"; Title = "Dedicated Physical RAM Stress";   Desc = "Saturate DDR5 RAM to 95% with active memory bus churn" }
+                [PSCustomObject]@{ Key = "7"; Title = "Measure Instantaneous CPU Spikes";Desc = "Detect per-process CPU spikes in real-time" }
+                [PSCustomObject]@{ Key = "8"; Title = "Cap CPU Boost Frequency (99%)";  Desc = "Disable thermal throttling spikes safely" }
                 [PSCustomObject]@{ Key = "0"; Title = "Return to Main Menu";             Desc = "Back to subsystem launcher" }
             )
             $subPick = Show-SubMenu -HubTitle "CPU & MEMORY HUB" -Options $subOpts
-            Clear-Host
+            try { Clear-Host } catch { }
             switch ($subPick) {
                 "1" {
                     & "$ScriptDir\core\HardwareProfile.ps1" -ShowUi
@@ -387,11 +388,16 @@ while ($true) {
                     [Console]::ReadKey($true) | Out-Null
                 }
                 "6" {
-                    & "$ScriptDir\diagnostics\MeasureCpuDelta.ps1"
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -RamStress -StressDuration 10
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }
                 "7" {
+                    & "$ScriptDir\diagnostics\MeasureCpuDelta.ps1"
+                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                    [Console]::ReadKey($true) | Out-Null
+                }
+                "8" {
                     & "$ScriptDir\optimizer\PowerOptimizer.ps1"
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
@@ -448,15 +454,16 @@ while ($true) {
                 [PSCustomObject]@{ Key = "1"; Title = "NVMe Storage Read Benchmark";     Desc = "Benchmark sequential & 4K random read throughput in MB/s" }
                 [PSCustomObject]@{ Key = "2"; Title = "Multi-Core CPU Thermal Stress Test";Desc = "Stress all CPU threads with live temperature tracking" }
                 [PSCustomObject]@{ Key = "3"; Title = "Dedicated GPU Hardware Stress Test";Desc = "Stress RTX 5050 with 524,288 CUDA threads at 100% load" }
-                [PSCustomObject]@{ Key = "4"; Title = "Combined Full-System Burn-In";     Desc = "Saturate CPU, dedicated GPU & RAM simultaneously" }
-                [PSCustomObject]@{ Key = "5"; Title = "Manual Start / Stop Continuous Stress";Desc = "Continuous CPU/GPU burn-in with live keypress start and stop" }
-                [PSCustomObject]@{ Key = "6"; Title = "CPU Computational Benchmark";     Desc = "Measure single-thread & multi-thread compute score" }
-                [PSCustomObject]@{ Key = "7"; Title = "RAM Memory Bandwidth Benchmark"; Desc = "Measure DDR5 read and copy throughput in GB/s" }
-                [PSCustomObject]@{ Key = "8"; Title = "All-in-One Full System Benchmark";Desc = "Run full sequence of Storage, RAM, CPU and GPU stress" }
+                [PSCustomObject]@{ Key = "4"; Title = "Dedicated Physical RAM Stress";   Desc = "Saturate DDR5 RAM to 95% with active memory bus churn" }
+                [PSCustomObject]@{ Key = "5"; Title = "Combined Full-System Burn-In";     Desc = "Saturate CPU, dedicated GPU & RAM (95%) simultaneously" }
+                [PSCustomObject]@{ Key = "6"; Title = "Manual Start / Stop Continuous Stress";Desc = "Continuous CPU/GPU/RAM burn-in with live keypress start/stop" }
+                [PSCustomObject]@{ Key = "7"; Title = "CPU Computational Benchmark";     Desc = "Measure single-thread & multi-thread compute score" }
+                [PSCustomObject]@{ Key = "8"; Title = "RAM Memory Bandwidth Benchmark"; Desc = "Measure DDR5 read and copy throughput in GB/s" }
+                [PSCustomObject]@{ Key = "9"; Title = "All-in-One Full System Benchmark";Desc = "Run full sequence of Storage, RAM, CPU and GPU stress" }
                 [PSCustomObject]@{ Key = "0"; Title = "Return to Main Menu";             Desc = "Back to subsystem launcher" }
             )
             $subPick = Show-SubMenu -HubTitle "HARDWARE BENCHMARK & STRESS TESTING HUB" -Options $subOpts
-            Clear-Host
+            try { Clear-Host } catch { }
             switch ($subPick) {
                 "1" {
                     & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -StorageRead
@@ -474,26 +481,33 @@ while ($true) {
                     [Console]::ReadKey($true) | Out-Null
                 }
                 "4" {
-                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -SystemStress -StressDuration 10
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -RamStress -StressDuration 10
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }
                 "5" {
-                    Clear-Host
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -SystemStress -StressDuration 10
+                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                    [Console]::ReadKey($true) | Out-Null
+                }
+                "6" {
+                    try { Clear-Host } catch { }
                     Write-Host "================================================================================" -ForegroundColor Cyan
                     Write-Host "       MANUAL START / STOP HARDWARE STRESS TEST CONTROLLER" -ForegroundColor Yellow
                     Write-Host "================================================================================" -ForegroundColor Cyan
                     Write-Host " Select Target Component for Continuous Burn-In:" -ForegroundColor White
-                    Write-Host " [1] Combined Full-System Burn-In (CPU + Dedicated GPU + RAM)" -ForegroundColor White
+                    Write-Host " [1] Combined Full-System Burn-In (CPU + Dedicated GPU + RAM to 95%)" -ForegroundColor White
                     Write-Host " [2] Dedicated GPU Stress (RTX 5050 CUDA 100% @ 2.7+ GHz)" -ForegroundColor White
-                    Write-Host " [3] Multi-Core CPU Thermal Stress (All Logical Threads)" -ForegroundColor White
+                    Write-Host " [3] Multi-Core CPU Thermal Stress (All 24 Logical Threads)" -ForegroundColor White
+                    Write-Host " [4] Dedicated Physical RAM Saturation (Fill RAM to 95%+)" -ForegroundColor White
                     Write-Host " [0] Cancel" -ForegroundColor DarkGray
                     Write-Host "--------------------------------------------------------------------------------" -ForegroundColor Cyan
-                    $mPick = Read-Host " Select target [0-3]"
+                    $mPick = Read-Host " Select target [0-4]"
                     $tgt = switch ($mPick) {
                         "1" { "system" }
                         "2" { "gpu" }
                         "3" { "cpu" }
+                        "4" { "ram" }
                         default { $null }
                     }
                     if ($tgt) {
@@ -502,17 +516,17 @@ while ($true) {
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }
-                "6" {
+                "7" {
                     & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -CpuBench
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }
-                "7" {
+                "8" {
                     & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -RamBench
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }
-                "8" {
+                "9" {
                     & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -All
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
