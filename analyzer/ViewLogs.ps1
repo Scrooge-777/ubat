@@ -57,7 +57,6 @@ function Show-LogViewer {
         Write-Host " Start the Background Logger (Option 6) to begin recording telemetry." -ForegroundColor DarkGray
     } else {
         $rawLines = Get-Content -Path $CurrentLog -ErrorAction SilentlyContinue | Where-Object { $_ -notmatch "^#" -and $_ -match "," }
-        $header = $rawLines | Select-Object -First 1
         $dataLines = $rawLines | Select-Object -Skip 1
         $recordCount = if ($dataLines) { $dataLines.Count } else { 0 }
 
@@ -108,9 +107,8 @@ function Show-LogViewer {
                     $ram = "$($cols[7])"
                     $app = if ($cols[10].Length -gt 14) { $cols[10].Substring(0, 14) } else { $cols[10] }
 
-                    $pwrColor = if ($pwr -eq "AC") { "Green" } else { "Yellow" }
                     $formatted = " {0,-19} | {1,-4} | {2,6} | {3,9} | {4,8} | {5,5} | {6,8} | {7,-14}" -f $ts, $pwr, $pct, $rem, $rate, $cpu, $ram, $app
-                    Write-Host $formatted -ForegroundColor White
+                    Write-Host $formatted -ForegroundColor $(if ($pwr -eq "AC") { "Green" } else { "Yellow" })
                 }
             }
         } else {

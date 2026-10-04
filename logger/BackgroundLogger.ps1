@@ -21,7 +21,7 @@ $TimestampTag       = (Get-Date).ToString("yyyy-MM-dd_HH-mm-ss")
 $ArchiveSessionFile = Join-Path $ArchiveDir "session-$TimestampTag.csv"
 $PidFile            = Join-Path $LogsDir "battery-logger.pid"
 
-# ── Constants ───────────────────────────────────────────────────────────────
+# -- Constants ---------------------------------------------------------------
 $MAX_LOG_ROWS   = 5000   # rotate current-session.csv when it exceeds this
 $BATTERY_GUARD  = 5      # warn/stop at 5% (Windows hibernates around here)
 $LOG_INTERVAL_S = 30     # seconds between entries
@@ -31,7 +31,7 @@ $PID | Out-File -FilePath $PidFile -Encoding ascii -Force
 
 $header = "Timestamp,PowerOnline,BatteryPercent,Remaining_mWh,DischargeRate_Watts,Voltage_V,Cpu_Percent,RamUsed_GB,RamTotal_GB,Ram_Percent,TopCpuApp,TopMemApp"
 
-# ── Machine info for session header ─────────────────────────────────────────
+# -- Machine info for session header -----------------------------------------
 $machineInfo = "Unknown"
 $designCap   = 0
 try {
@@ -45,7 +45,7 @@ try {
 
 $sessionHeader = "# Session Started : $TimestampTag | Machine : $machineInfo | DesignCap : $designCap mWh"
 
-# ── Helper: rotate log if needed ─────────────────────────────────────────────
+# -- Helper: rotate log if needed ---------------------------------------------
 function Invoke-LogRotation {
     if (-not (Test-Path $CurrentSessionFile)) { return }
     try {
@@ -55,22 +55,22 @@ function Invoke-LogRotation {
             $rotTag    = (Get-Date).ToString("yyyy-MM-dd_HH-mm-ss")
             $rotDest   = Join-Path $ArchiveDir "session-rotated-$rotTag.csv"
             Copy-Item -Path $CurrentSessionFile -Destination $rotDest -Force -ErrorAction SilentlyContinue
-            Set-Content -Path $CurrentSessionFile -Value $sessionHeader  -Encoding utf8
-            Add-Content -Path $CurrentSessionFile -Value $header         -Encoding utf8
-            Add-Content -Path $CurrentSessionFile -Value "# LOG ROTATED AT $rotTag (prev: $lineCount rows)" -Encoding utf8
+            Set-Content -Path $CurrentSessionFile -Value $sessionHeader  -Encoding ascii
+            Add-Content -Path $CurrentSessionFile -Value $header         -Encoding ascii
+            Add-Content -Path $CurrentSessionFile -Value "# LOG ROTATED AT $rotTag (prev: $lineCount rows)" -Encoding ascii
         }
     } catch {}
 }
 
-# ── Initialize session files ──────────────────────────────────────────────────
+# -- Initialize session files --------------------------------------------------
 if (-not (Test-Path $CurrentSessionFile)) {
-    Set-Content -Path $CurrentSessionFile -Value $sessionHeader -Encoding utf8
-    Add-Content -Path $CurrentSessionFile -Value $header        -Encoding utf8
+    Set-Content -Path $CurrentSessionFile -Value $sessionHeader -Encoding ascii
+    Add-Content -Path $CurrentSessionFile -Value $header        -Encoding ascii
 }
-Set-Content -Path $ArchiveSessionFile -Value $sessionHeader -Encoding utf8
-Add-Content -Path $ArchiveSessionFile -Value $header        -Encoding utf8
+Set-Content -Path $ArchiveSessionFile -Value $sessionHeader -Encoding ascii
+Add-Content -Path $ArchiveSessionFile -Value $header        -Encoding ascii
 
-# ── Metrics snapshot ──────────────────────────────────────────────────────────
+# -- Metrics snapshot ----------------------------------------------------------
 function Get-MetricsSnapshot {
     $status  = Get-CimInstance -Namespace root/wmi -ClassName BatteryStatus              -ErrorAction SilentlyContinue
     $batt    = Get-CimInstance -ClassName Win32_Battery                                  -ErrorAction SilentlyContinue
@@ -114,7 +114,7 @@ function Get-MetricsSnapshot {
     }
 }
 
-# ── Main recording loop ───────────────────────────────────────────────────────
+# -- Main recording loop -------------------------------------------------------
 try {
     while ($true) {
         Invoke-LogRotation
@@ -123,14 +123,14 @@ try {
         $csvLine = "$($m.Timestamp),$($m.PowerOnline),$($m.BatteryPercent),$($m.Remaining_mWh),$($m.Discharge_Watts),$($m.Voltage_V),$($m.Cpu_Percent),$($m.RamUsed_GB),$($m.RamTotal_GB),$($m.Ram_Percent),`"$($m.TopCpuApp)`",`"$($m.TopMemApp)`""
 
         # Write to both current session and archive file
-        Add-Content -Path $CurrentSessionFile  -Value $csvLine -Encoding utf8
-        Add-Content -Path $ArchiveSessionFile  -Value $csvLine -Encoding utf8
+        Add-Content -Path $CurrentSessionFile  -Value $csvLine -Encoding ascii
+        Add-Content -Path $ArchiveSessionFile  -Value $csvLine -Encoding ascii
 
-        # Critical battery guard (5% — fires before Windows hibernation at ~3-4%)
+        # Critical battery guard (5% -- fires before Windows hibernation at ~3-4%)
         if ($m.BatteryPercent -gt 0 -and $m.BatteryPercent -le $BATTERY_GUARD -and -not $m.PowerOnline) {
             $msg = "# CRITICAL BATTERY THRESHOLD ($BATTERY_GUARD%) REACHED AT $($m.Timestamp)"
-            Add-Content -Path $CurrentSessionFile -Value $msg -Encoding utf8
-            Add-Content -Path $ArchiveSessionFile -Value $msg -Encoding utf8
+            Add-Content -Path $CurrentSessionFile -Value $msg -Encoding ascii
+            Add-Content -Path $ArchiveSessionFile -Value $msg -Encoding ascii
             break
         }
 

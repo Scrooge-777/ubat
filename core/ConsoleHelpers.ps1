@@ -67,7 +67,7 @@ function Write-Centered {
     Write-Host $str -ForegroundColor $Color
 }
 
-# ── Aliases for LiveMonitor.ps1 naming convention ──────────────────────────
+# -- Aliases for LiveMonitor.ps1 naming convention --------------------------
 Set-Alias -Name Hide-ConsoleCursor   -Value Hide-Cursor   -Scope Global -Force
 Set-Alias -Name Show-ConsoleCursor   -Value Show-Cursor   -Scope Global -Force
 Set-Alias -Name Reset-ConsoleCursor  -Value Reset-Cursor  -Scope Global -Force
