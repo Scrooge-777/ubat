@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Shared Console Helper Utilities for OMNI
 .DESCRIPTION

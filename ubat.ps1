@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     OMNI - Master System Hardware & Optimization Suite
 .DESCRIPTION
@@ -35,26 +35,26 @@ function Format-MenuOptionLine {
         [bool]$IsSelected,
         [int]$TermWidth
     )
-    $bullet = if ($IsSelected) { "●" } else { "○" }
-    $prefix = "│  $bullet [$($Option.Key)] "
+    $bullet = if ($IsSelected) { $global:G_ACTIVE } else { $global:G_IDLE }
+    $prefix = "$($global:G_RAIL)  $bullet  "
     $avail = $TermWidth - $prefix.Length
-    if ($avail -le 20) {
+    if ($avail -le 24) {
         return "$prefix$($Option.Title)"
     }
-    if ($avail -lt 55) {
+    if ($avail -lt 60) {
         $title = $Option.Title
         $rem = $avail - $title.Length - 4
         if ($rem -gt 8) {
             $desc = if ($Option.Desc.Length -gt $rem) { $Option.Desc.Substring(0, $rem - 3) + "..." } else { $Option.Desc }
-            return "$prefix$title ─ $desc"
+            return "$prefix$title $($global:G_BAR) $desc"
         } else {
             return "$prefix$title"
         }
     } else {
-        $pad = [math]::Min(32, [math]::Max(22, [int]($avail * 0.35)))
+        $pad = [math]::Min(34, [math]::Max(24, [int]($avail * 0.36)))
         $rem = $avail - $pad - 4
         $desc = if ($Option.Desc.Length -gt $rem) { $Option.Desc.Substring(0, [math]::Max(0, $rem - 3)) + "..." } else { $Option.Desc }
-        return "$prefix$($Option.Title.PadRight($pad)) ─ $desc"
+        return "$prefix$($Option.Title.PadRight($pad)) $($global:G_BAR) $desc"
     }
 }
 
@@ -91,10 +91,10 @@ function Show-SubMenu {
             }
 
             Reset-Cursor
-            Write-LineClean "┌   $HubTitle" Cyan
-            Write-LineClean "│" DarkGray
-            Write-LineClean "◇  Choose a sub-module to execute:" White
-            Write-LineClean "│" DarkGray
+            Write-LineClean "$($global:G_TOP)   $HubTitle" Cyan
+            Write-LineClean "$($global:G_RAIL)" DarkGray
+            Write-LineClean "$($global:G_DIAMOND)  Choose an operation to execute:" White
+            Write-LineClean "$($global:G_RAIL)" DarkGray
 
             for ($i = 0; $i -lt $Options.Count; $i++) {
                 $opt = $Options[$i]
@@ -106,13 +106,18 @@ function Show-SubMenu {
                 }
             }
 
-            Write-LineClean "│" DarkGray
-            $barLen = [math]::Max(2, $termWidth - 28)
-            Write-LineClean ("◇  Navigation Controls " + ("─" * $barLen) + "╮") DarkGray
-            Write-LineClean "│  [↑/↓] Navigate  │  [Enter] Select  │  [0 / Esc] Return   │" DarkGray
-            Write-LineClean ("├" + ("─" * [math]::Max(2, $termWidth - 4)) + "╯") DarkGray
-            Write-LineClean "│" DarkGray
-            Write-LineClean "└  Ready." DarkGray
+            Write-LineClean "$($global:G_RAIL)" DarkGray
+            $cardWidth = [math]::Min(56, [math]::Max(42, $termWidth - 6))
+            $padLen = [math]::Max(2, ($cardWidth - 14))
+            Write-LineClean ("$($global:G_DIAMOND)  Controls " + ($global:G_BAR * $padLen) + $global:G_TR) DarkGray
+            Write-LineClean ("$($global:G_RAIL)" + (" " * ($cardWidth + 1)) + "$($global:G_RAIL)") DarkGray
+            $contentStr = "  [↑/↓] Navigate   [Enter] Select   [Esc/Q] Back"
+            $contentPad = [math]::Max(1, ($cardWidth - $contentStr.Length + 1))
+            Write-LineClean ("$($global:G_RAIL)" + $contentStr + (" " * $contentPad) + "$($global:G_RAIL)") DarkGray
+            Write-LineClean ("$($global:G_RAIL)" + (" " * ($cardWidth + 1)) + "$($global:G_RAIL)") DarkGray
+            Write-LineClean ("$($global:G_TEE)" + ($global:G_BAR * ($cardWidth + 1)) + $global:G_BR) DarkGray
+            Write-LineClean "$($global:G_RAIL)" DarkGray
+            Write-LineClean "$($global:G_BOT)  Ready. Use arrow keys to navigate." DarkGray
             try { [Console]::Write("`e[J") } catch {}
 
             try {
@@ -212,12 +217,12 @@ while ($true) {
         }
 
         Reset-Cursor
-        Write-LineClean "┌   $bannerTitle" Cyan
-        Write-LineClean "│" DarkGray
-        Write-LineClean "◇  Platform: $($hw.Manufacturer) $($hw.Model)  |  CPU: $($hw.CpuName)" DarkGray
-        Write-LineClean "│" DarkGray
-        Write-LineClean "◇  Choose a hardware subsystem or hub:" White
-        Write-LineClean "│" DarkGray
+        Write-LineClean "$($global:G_TOP)   $bannerTitle" Cyan
+        Write-LineClean "$($global:G_RAIL)" DarkGray
+        Write-LineClean "$($global:G_DIAMOND)  Platform: $($hw.Manufacturer) $($hw.Model)  |  CPU: $($hw.CpuName)" DarkGray
+        Write-LineClean "$($global:G_RAIL)" DarkGray
+        Write-LineClean "$($global:G_DIAMOND)  Choose a hardware subsystem or hub:" White
+        Write-LineClean "$($global:G_RAIL)" DarkGray
 
         for ($i = 0; $i -lt $mainOptions.Count; $i++) {
             $opt = $mainOptions[$i]
@@ -229,13 +234,18 @@ while ($true) {
             }
         }
 
-        Write-LineClean "│" DarkGray
-        $barLen = [math]::Max(2, $termWidth - 28)
-        Write-LineClean ("◇  Navigation Controls " + ("─" * $barLen) + "╮") DarkGray
-        Write-LineClean "│  [↑/↓] Navigate  │  [Enter/Space] Select  │  [0-7] Jump  │  [Q] Exit  │" DarkGray
-        Write-LineClean ("├" + ("─" * [math]::Max(2, $termWidth - 4)) + "╯") DarkGray
-        Write-LineClean "│" DarkGray
-        Write-LineClean "└  Ready. Press a key to execute." DarkGray
+        Write-LineClean "$($global:G_RAIL)" DarkGray
+        $cardWidth = [math]::Min(62, [math]::Max(46, $termWidth - 6))
+        $padLen = [math]::Max(2, ($cardWidth - 14))
+        Write-LineClean ("$($global:G_DIAMOND)  Controls " + ($global:G_BAR * $padLen) + $global:G_TR) DarkGray
+        Write-LineClean ("$($global:G_RAIL)" + (" " * ($cardWidth + 1)) + "$($global:G_RAIL)") DarkGray
+        $contentStr = "  [↑/↓] Navigate   [Enter/Space] Select   [Q/Esc] Exit"
+        $contentPad = [math]::Max(1, ($cardWidth - $contentStr.Length + 1))
+        Write-LineClean ("$($global:G_RAIL)" + $contentStr + (" " * $contentPad) + "$($global:G_RAIL)") DarkGray
+        Write-LineClean ("$($global:G_RAIL)" + (" " * ($cardWidth + 1)) + "$($global:G_RAIL)") DarkGray
+        Write-LineClean ("$($global:G_TEE)" + ($global:G_BAR * ($cardWidth + 1)) + $global:G_BR) DarkGray
+        Write-LineClean "$($global:G_RAIL)" DarkGray
+        Write-LineClean "$($global:G_BOT)  Ready. Use arrow keys to navigate." DarkGray
         try { [Console]::Write("`e[J") } catch {}
 
         try {
