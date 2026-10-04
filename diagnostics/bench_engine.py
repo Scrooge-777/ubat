@@ -525,13 +525,12 @@ def run_ram_stress_test(duration=10, stop_event=None, progress_cb=None):
     def ram_worker(w_idx):
         total = 0
         while not stop_event.is_set():
-            curr_chunks = list(chunks)
-            for c in curr_chunks:
+            for c in chunks:
                 if stop_event.is_set():
                     break
                 s = sum(c[::65536])
                 total += len(c)
-        churn_bytes[w_idx] = total
+                churn_bytes[w_idx] = total
 
     for i in range(num_workers):
         t = threading.Thread(target=ram_worker, args=(i,))
@@ -1166,10 +1165,27 @@ def run_cpu_benchmark(duration_seconds=3):
     st_duration = time.perf_counter() - st_start
     st_ops_sec = int(st_ops / st_duration)
 
-    # Multi-core scaling normalized to physical processor topology
+    # Measure real multi-thread execution across processor cores
     physical_cores = psutil.cpu_count(logical=False) or 8
-    # Multi-core efficiency scaling across Raptor Lake-HX architecture (~0.88 efficiency factor)
-    mt_ops_sec = int(st_ops_sec * physical_cores * 0.88)
+    mt_ops_total = 0
+    mt_start = time.perf_counter()
+    mt_end = mt_start + duration_seconds
+
+    def _mt_worker():
+        ops = 0
+        while time.perf_counter() < mt_end:
+            val = math.sqrt(ops + 1.0) * math.sin(0.5)
+            ops += 1
+        return ops
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=physical_cores) as executor:
+        futures = [executor.submit(_mt_worker) for _ in range(physical_cores)]
+        for f in futures:
+            mt_ops_total += f.result()
+
+    mt_duration = time.perf_counter() - mt_start
+    mt_ops_sec = int(mt_ops_total / max(0.001, mt_duration))
     single_score = int(st_ops_sec / 1500)
     multi_score = int(mt_ops_sec / 1500)
     multi_ratio = round(mt_ops_sec / max(1.0, st_ops_sec), 2)
@@ -1196,9 +1212,13 @@ def run_ram_bandwidth_benchmark(buffer_mb=DEFAULT_RAM_BENCH_MB):
         # Allocate buffer
         source = bytearray(b"A" * size_bytes)
         
-        # Sequential read pass
+        # Sequential read pass (streams the full buffer via memoryview)
         start_read = time.perf_counter()
-        dummy_hash = sum(source[::4096])
+        mv = memoryview(source)
+        dummy_hash = 0
+        chunk_sz = 1024 * 1024
+        for offset in range(0, size_bytes, chunk_sz):
+            dummy_hash += sum(mv[offset:offset + chunk_sz])
         read_duration = time.perf_counter() - start_read
         read_gbs = round((size_bytes / (1024 ** 3)) / max(0.0001, read_duration), 2)
 

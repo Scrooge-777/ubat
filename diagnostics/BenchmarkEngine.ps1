@@ -243,11 +243,9 @@ function Test-RamBandwidth {
 
     Write-Host " Allocating 64MB memory test buffer..." -ForegroundColor Gray
     $buf = New-Object byte[] (64 * 1024 * 1024)
+    $dest = New-Object byte[] (64 * 1024 * 1024)
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    $sum = 0
-    for ($i = 0; $i -lt $buf.Length; $i += 4096) {
-        $sum += $buf[$i]
-    }
+    [System.Buffer]::BlockCopy($buf, 0, $dest, 0, $buf.Length)
     $sw.Stop()
     $readGBs = [math]::Round(((64 * 1024 * 1024) / (1024 * 1024 * 1024)) / [math]::Max(0.0001, $sw.Elapsed.TotalSeconds), 2)
     Write-Host " Memory Throughput Rate   : $readGBs GB/s" -ForegroundColor Green

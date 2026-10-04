@@ -23,7 +23,7 @@ echo.
 echo 3. Committing changes...
 set /p commit_msg="Enter commit message (press Enter for auto-timestamp): "
 if "%commit_msg%"=="" (
-    for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value') do set dt=%%I
+    for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-Date -Format 'yyyy-MM-dd HH:mm:ss'"') do set dt=%%I
     set commit_msg=sync: auto-update repository telemetry and configs
 )
 git commit -m "%commit_msg%"
