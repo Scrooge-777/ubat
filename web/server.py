@@ -91,8 +91,18 @@ def poll_gpu():
     return CACHED_GPU
 
 
+# Cached CIM Battery Telemetry
+CACHED_BATTERY_CIM = {
+    "full_mwh": 80122,
+    "remaining_mwh": 65000,
+    "wattage": 0.0,
+}
+LAST_BATTERY_CIM_FETCH = 0.0
+
+
 def get_battery_telemetry():
-    """Compiles complete battery status and ACPI health telemetry."""
+    """Compiles complete battery status and ACPI health telemetry with intelligent caching."""
+    global CACHED_BATTERY_CIM, LAST_BATTERY_CIM_FETCH
     batt = psutil.sensors_battery()
     pct = batt.percent if batt else 80
     plugged = batt.power_plugged if batt else True
@@ -100,22 +110,28 @@ def get_battery_telemetry():
 
     # Default design & full capacity
     design_mwh = 83028
-    full_mwh = 80122
+    full_mwh = CACHED_BATTERY_CIM["full_mwh"]
     remaining_mwh = int(round(full_mwh * (pct / 100.0)))
-    wattage = 0.0
+    wattage = CACHED_BATTERY_CIM["wattage"]
 
-    try:
-        cmd = 'powershell.exe -NoProfile -Command "$f = (Get-CimInstance -Namespace root/wmi -ClassName BatteryFullChargedCapacity -ErrorAction SilentlyContinue).FullChargedCapacity; $s = (Get-CimInstance -Namespace root/wmi -ClassName BatteryStatus -ErrorAction SilentlyContinue); [PSCustomObject]@{ Full = $f; Rem = $s.RemainingCapacity; Rate = $s.DischargeRate } | ConvertTo-Json -Compress"'
-        out = subprocess.check_output(cmd, shell=True, text=True, timeout=2).strip()
-        data = json.loads(out)
-        if data.get("Full"):
-            full_mwh = int(data["Full"])
-        if data.get("Rem"):
-            remaining_mwh = int(data["Rem"])
-        if data.get("Rate"):
-            wattage = round(abs(int(data["Rate"])) / 1000.0, 2)
-    except Exception:
-        pass
+    now = time.time()
+    if now - LAST_BATTERY_CIM_FETCH > 15.0:
+        LAST_BATTERY_CIM_FETCH = now
+        try:
+            cmd = 'powershell.exe -NoProfile -Command "$f = (Get-CimInstance -Namespace root/wmi -ClassName BatteryFullChargedCapacity -ErrorAction SilentlyContinue).FullChargedCapacity; $s = (Get-CimInstance -Namespace root/wmi -ClassName BatteryStatus -ErrorAction SilentlyContinue); [PSCustomObject]@{ Full = $f; Rem = $s.RemainingCapacity; Rate = $s.DischargeRate } | ConvertTo-Json -Compress"'
+            out = subprocess.check_output(cmd, shell=True, text=True, timeout=2).strip()
+            data = json.loads(out)
+            if data.get("Full"):
+                full_mwh = int(data["Full"])
+                CACHED_BATTERY_CIM["full_mwh"] = full_mwh
+            if data.get("Rem"):
+                remaining_mwh = int(data["Rem"])
+                CACHED_BATTERY_CIM["remaining_mwh"] = remaining_mwh
+            if data.get("Rate"):
+                wattage = round(abs(int(data["Rate"])) / 1000.0, 2)
+                CACHED_BATTERY_CIM["wattage"] = wattage
+        except Exception:
+            pass
 
     wear_pct = max(0.0, round((1.0 - (full_mwh / design_mwh)) * 100.0, 1)) if design_mwh > 0 else 3.5
     grade = "GRADE S (Pristine)" if wear_pct < 2.0 else "GRADE A (Very Good)" if wear_pct < 10.0 else "GRADE B (Good)"
@@ -226,13 +242,23 @@ class UbatRequestHandler(SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(data)))
-        self.send_header('Access-Control-Allow-Origin', '*')
+        origin = self.headers.get('Origin', '')
+        allowed_origin = origin if origin in ['http://127.0.0.1:5050', 'http://localhost:5050'] else 'http://127.0.0.1:5050'
+        self.send_header('Access-Control-Allow-Origin', allowed_origin)
         self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
         self.end_headers()
         self.wfile.write(data)
 
     def handle_kill_process(self):
         try:
+            origin = self.headers.get('Origin', '')
+            if origin and origin not in ['http://127.0.0.1:5050', 'http://localhost:5050']:
+                self.send_response(403)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(b'{"success": false, "error": "Cross-origin requests forbidden"}')
+                return
+
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length)
             payload = json.loads(post_data.decode('utf-8'))
@@ -245,6 +271,7 @@ class UbatRequestHandler(SimpleHTTPRequestHandler):
             response = json.dumps({"success": True, "pid": pid, "name": name}).encode('utf-8')
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', 'http://127.0.0.1:5050')
             self.end_headers()
             self.wfile.write(response)
         except Exception as e:

@@ -28,12 +28,12 @@ from rich.align import Align
 from rich import box
 
 try:
-    from hwinfo_bridge import query_hwinfo_sensors
+    from native_sensor_engine import get_native_hardware_telemetry
 except ImportError:
     try:
-        from tui.hwinfo_bridge import query_hwinfo_sensors
+        from tui.native_sensor_engine import get_native_hardware_telemetry
     except ImportError:
-        query_hwinfo_sensors = None
+        get_native_hardware_telemetry = None
 
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 _root_dir = os.path.dirname(_script_dir)
@@ -404,20 +404,26 @@ def update_cpu_thermals():
         pass
 
 
-def update_hwinfo():
-    """Queries HWiNFO shared memory bridge for fan RPMs, VRM, and hotspot thermals."""
+def update_native_sensors():
+    """Queries native hardware sensor engine directly without external applications."""
     global TELEMETRY
-    if query_hwinfo_sensors:
+    if get_native_hardware_telemetry:
         try:
-            hw = query_hwinfo_sensors()
-            TELEMETRY["hwinfo_active"] = hw.get("active", False)
-            if hw.get("active", False):
-                TELEMETRY["cpu_fan_rpm"] = hw.get("cpu_fan_rpm", 0)
-                TELEMETRY["gpu_fan_rpm"] = hw.get("gpu_fan_rpm", 0)
-                TELEMETRY["gpu_hotspot_c"] = hw.get("gpu_hotspot_c", 0)
-                TELEMETRY["vrm_temp_c"] = hw.get("vrm_temp_c", 0)
-                if hw.get("package_power_w", 0.0) > 0:
-                    TELEMETRY["package_power_w"] = hw.get("package_power_w", 0.0)
+            sensors = get_native_hardware_telemetry()
+            if sensors and sensors.get("active"):
+                TELEMETRY["sensor_bus_active"] = True
+                if sensors.get("gpu_temp_c", 0) > 0:
+                    TELEMETRY["gpu_temp"] = sensors["gpu_temp_c"]
+                if sensors.get("gpu_power_w", 0.0) > 0:
+                    TELEMETRY["gpu_power"] = sensors["gpu_power_w"]
+                if sensors.get("gpu_fan_pct", 0) > 0:
+                    TELEMETRY["gpu_fan_rpm"] = sensors["gpu_fan_pct"]
+                if sensors.get("cpu_temp_c", 0.0) > 0:
+                    TELEMETRY["cpu_temp_c"] = sensors["cpu_temp_c"]
+                if sensors.get("gpu_clock_mhz", 0) > 0:
+                    TELEMETRY["gpu_clock_mhz"] = sensors["gpu_clock_mhz"]
+                if sensors.get("gpu_vram_used_mb", 0) > 0:
+                    TELEMETRY["gpu_vram_used_mb"] = sensors["gpu_vram_used_mb"]
         except Exception:
             pass
 
@@ -427,9 +433,10 @@ def refresh_sensor_metrics():
     global STATUS_MESSAGE, STATUS_TIME
     try:
         update_cpu_thermals()
-        update_gpu_nvidia()
+        update_native_sensors()
+        if TELEMETRY.get("gpu_power", 0) == 0:
+            update_gpu_nvidia()
         update_ssd_cim()
-        update_hwinfo()
         STATUS_MESSAGE = "Native hardware & sensor telemetry refreshed successfully."
     except Exception as e:
         STATUS_MESSAGE = f"Sensor refresh error: {e}"
@@ -437,18 +444,18 @@ def refresh_sensor_metrics():
 
 
 def telemetry_background_worker():
-    """Background worker thread for periodic heavy telemetry (GPU, ACPI, SSD, Thermals)."""
+    """Background worker thread for periodic telemetry with minimal process churn."""
     global RUNNING
     counter = 0
     while RUNNING:
         try:
-            if counter % 4 == 0:
+            update_native_sensors()
+            if counter % 8 == 0:
                 update_battery_cim()
                 update_ssd_cim()
                 update_cpu_thermals()
-            if counter % 2 == 0:
+            if counter % 4 == 0 and TELEMETRY.get("gpu_power", 0) == 0:
                 update_gpu_nvidia()
-            update_hwinfo()
         except Exception:
             pass
         counter += 1
@@ -1276,7 +1283,7 @@ def build_sensors_view():
     ram_tot = HARDWARE_INFO.get("total_ram_gb", 23.6)
     ram_mods = HARDWARE_INFO.get("ram_modules", [])
 
-    hw_active = TELEMETRY.get("hwinfo_active", False)
+    hw_active = TELEMETRY.get("sensor_bus_active", False) or TELEMETRY.get("hwinfo_active", False)
     cpu_rpm = TELEMETRY.get("cpu_fan_rpm", 0)
     gpu_rpm = TELEMETRY.get("gpu_fan_rpm", 0)
     vrm_c = TELEMETRY.get("vrm_temp_c", 0)
@@ -1328,14 +1335,14 @@ def build_sensors_view():
     sensor_table.add_row("NVMe Storage", "Controller Temperature", f"[{s_col}]{ssd_temp} C[/{s_col}]", f"SMART Status: {ssd_health}")
     sensor_table.add_row("NVMe Storage", "Wear Degradation", f"{ssd_wear}%", f"{ssd_model[:30]}")
 
-    # Cooling Fans (if active via passive mmap)
-    if hw_active and (cpu_rpm > 0 or gpu_rpm > 0):
+    # Cooling Fans & Direct Sensors
+    if cpu_rpm > 0 or gpu_rpm > 0 or vrm_c > 0:
         if cpu_rpm > 0:
-            sensor_table.add_row("Cooling Fans", "CPU Cooling Fan", f"{cpu_rpm} RPM", "[dim]Passive mmap[/dim]")
+            sensor_table.add_row("Cooling Fans", "CPU Cooling Fan", f"{cpu_rpm} RPM", "[dim]Native Driver[/dim]")
         if gpu_rpm > 0:
-            sensor_table.add_row("Cooling Fans", "GPU Cooling Fan", f"{gpu_rpm} RPM", "[dim]Passive mmap[/dim]")
+            sensor_table.add_row("Cooling Fans", "GPU Cooling Fan", f"{gpu_rpm} RPM" if gpu_rpm > 100 else f"{gpu_rpm}% PWM", "[dim]Native Driver[/dim]")
         if vrm_c > 0:
-            sensor_table.add_row("Thermals", "Motherboard VRM / MOSFET", f"{vrm_c} C", "[dim]Passive mmap[/dim]")
+            sensor_table.add_row("Thermals", "Motherboard VRM / MOSFET", f"{vrm_c} C", "[dim]Native Driver[/dim]")
 
     # Hardware Benchmarks & Stress Results
     bm = TELEMETRY.get("benchmarks", {})
