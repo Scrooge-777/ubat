@@ -1,0 +1,4 @@
+# OMNI - Python TUI Requirements
+# Install with: pip install -r requirements.txt
+rich>=13.0
+psutil>=5.9

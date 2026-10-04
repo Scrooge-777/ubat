@@ -35,25 +35,24 @@ except ImportError:
     except ImportError:
         query_hwinfo_sensors = None
 
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+_root_dir = os.path.dirname(_script_dir)
+_diag_dir = os.path.join(_root_dir, "diagnostics")
+if _diag_dir not in sys.path:
+    sys.path.insert(0, _diag_dir)
+
 try:
-    from diagnostics import bench_engine
-except ImportError:
-    try:
-        import bench_engine
-    except ImportError:
-        try:
-            sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "diagnostics"))
-            import bench_engine
-        except ImportError:
-            bench_engine = None
+    import bench_engine
+except Exception:
+    bench_engine = None
 
 # Console initialization
 console = Console()
 
 # Global State
 RUNNING = True
-CURRENT_VIEW = "all"  # 'all', 'battery', 'cpu', 'ram', 'storage', 'processes', 'logs', 'sensors'
-REFRESH_RATES = [0.5, 1.0, 1.5, 2.0]
+CURRENT_VIEW = "all"  # 'all', 'battery', 'cpu', 'ram', 'gpu', 'storage', 'processes', 'logs', 'sensors'
+REFRESH_RATES = [0.5, 1.0, 2.0, 5.0, 10.0]
 REFRESH_INDEX = 1     # Default 1.0s (comfortable reading rate)
 REFRESH_RATE = REFRESH_RATES[REFRESH_INDEX]
 
@@ -66,63 +65,103 @@ STATUS_TIME = 0.0
 
 FRAME_INDEX = 0
 
-# Hardware Profile Cache
+# User Preferences Persistence
+_PREFS_FILE = os.path.join(_root_dir, "ubat-prefs.json")
+
+
+def load_preferences():
+    """Loads user configuration (view mode, refresh rate, filter mode) from ubat-prefs.json."""
+    global CPU_MINIMIZE_MODE, REFRESH_RATE, REFRESH_INDEX, PROCESS_SORT_MODE, PROCESS_FILTER_MODE
+    if not os.path.exists(_PREFS_FILE):
+        return
+    try:
+        with open(_PREFS_FILE, "r", encoding="utf-8") as f:
+            p = json.load(f)
+            if "cpu_minimize_mode" in p:
+                CPU_MINIMIZE_MODE = bool(p["cpu_minimize_mode"])
+            if "refresh_rate" in p and p["refresh_rate"] in REFRESH_RATES:
+                REFRESH_RATE = float(p["refresh_rate"])
+                REFRESH_INDEX = REFRESH_RATES.index(REFRESH_RATE)
+            if "process_sort_mode" in p and p["process_sort_mode"] in ["cpu", "ram"]:
+                PROCESS_SORT_MODE = str(p["process_sort_mode"])
+            if "process_filter_mode" in p and p["process_filter_mode"] in ["all", "heavy"]:
+                PROCESS_FILTER_MODE = str(p["process_filter_mode"])
+    except Exception:
+        pass
+
+
+def save_preferences():
+    """Saves user configuration to ubat-prefs.json for session persistence."""
+    try:
+        data = {
+            "cpu_minimize_mode": CPU_MINIMIZE_MODE,
+            "refresh_rate": REFRESH_RATE,
+            "process_sort_mode": PROCESS_SORT_MODE,
+            "process_filter_mode": PROCESS_FILTER_MODE,
+        }
+        with open(_PREFS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
+
+# Hardware Profile Cache (Initialized with dynamic fallbacks, updated on startup)
 HARDWARE_INFO = {
-    "manufacturer": "HP",
-    "model": "OMEN Gaming Laptop 16-am0xxx",
-    "board_mfg": "HP",
-    "board_model": "8D3F",
-    "bios_version": "F.14",
-    "bios_date": "2026-04-13",
-    "cpu_name": "Intel(R) Core(TM) i7-14650HX",
-    "cpu_cores_logical": psutil.cpu_count(logical=True) or 16,
-    "cpu_cores_physical": psutil.cpu_count(logical=False) or 8,
+    "manufacturer": "Generic",
+    "model": "System",
+    "board_mfg": "Unknown",
+    "board_model": "Unknown",
+    "bios_version": "N/A",
+    "bios_date": "N/A",
+    "cpu_name": "Processor",
+    "cpu_cores_logical": psutil.cpu_count(logical=True) or 4,
+    "cpu_cores_physical": psutil.cpu_count(logical=False) or 2,
     "total_ram_gb": round(psutil.virtual_memory().total / (1024**3), 1),
-    "ram_speed_mts": 5600,
+    "ram_speed_mts": 0,
+    "ram_type": "RAM",
     "ram_modules": [],
 }
 
-# Real-time Telemetry Cache
+# Real-time Telemetry Cache (Populated live via CIM and psutil)
 TELEMETRY = {
-    "battery_pct": 80,
+    "battery_pct": 0,
     "battery_plugged": True,
     "battery_secsleft": -1,
     "battery_wattage": 0.0,
-    "battery_mwh_remaining": 64097,
-    "battery_mwh_full": 80122,
-    "battery_mwh_design": 83028,
-    "battery_wear_pct": 3.5,
-    "battery_health_grade": "A (Very Good)",
-    "battery_cycle_count": 31,
-    "battery_voltage_v": 12.4,
+    "battery_mwh_remaining": 0,
+    "battery_mwh_full": 0,
+    "battery_mwh_design": 0,
+    "battery_wear_pct": 0.0,
+    "battery_health_grade": "N/A",
+    "battery_cycle_count": 0,
+    "battery_voltage_v": 0.0,
     "cpu_pct": 0.0,
     "cpu_per_core": [],
-    "cpu_temp_c": 52.0,
-    "cpu_freq_mhz": 2200,
+    "cpu_temp_c": 0.0,
+    "cpu_freq_mhz": 0,
     "ram_pct": 0.0,
     "ram_used_gb": 0.0,
     "ram_avail_gb": 0.0,
-    "gpu_name": "NVIDIA GeForce RTX 5050 Laptop GPU",
-    "gpu_driver": "617.14",
+    "gpu_name": "Discrete GPU",
+    "gpu_driver": "N/A",
     "gpu_util": 0,
-    "gpu_temp": 43,
-    "gpu_power": 18.2,
-    "gpu_vram_total_mb": 8151,
+    "gpu_temp": 0,
+    "gpu_power": 0.0,
+    "gpu_vram_total_mb": 0,
     "gpu_vram_used_mb": 0,
-    "gpu_mem_clock_mhz": 11001,
-    "gpu_core_clock_mhz": 210,
-    "gpu_throttle": "0x0000000000000004",
-    "gpu_pcie_link": "Gen5 x8",
+    "gpu_mem_clock_mhz": 0,
+    "gpu_core_clock_mhz": 0,
+    "gpu_throttle": "None",
+    "gpu_pcie_link": "N/A",
     "hwinfo_active": False,
     "cpu_fan_rpm": 0,
     "gpu_fan_rpm": 0,
     "gpu_hotspot_c": 0,
     "vrm_temp_c": 0,
     "package_power_w": 0.0,
-    "ssd_model": "Samsung NVMe SSD",
+    "ssd_model": "Storage SSD",
     "ssd_health": "Healthy (OK)",
     "ssd_wear_pct": 0,
-    "ssd_temp": 46,
+    "ssd_temp": 0,
     "partitions": [],
     "disk_read_mbs": 0.0,
     "disk_write_mbs": 0.0,
@@ -160,8 +199,8 @@ TELEMETRY = {
 
 
 def detect_system_hardware():
-    """Detects laptop model, motherboard, BIOS, CPU name, and RAM topology."""
-    global HARDWARE_INFO
+    """Detects laptop model, motherboard, BIOS, CPU name, GPU, and RAM topology."""
+    global HARDWARE_INFO, TELEMETRY
     try:
         cmd = 'powershell.exe -NoProfile -Command "Get-CimInstance Win32_ComputerSystem | Select-Object Manufacturer, Model | ConvertTo-Json -Compress"'
         out = subprocess.check_output(cmd, shell=True, text=True, timeout=2).strip()
@@ -197,8 +236,9 @@ def detect_system_hardware():
     except Exception:
         pass
 
+    # Dynamic RAM Topology & Memory Generation Detection
     try:
-        cmd = 'powershell.exe -NoProfile -Command "Get-CimInstance Win32_PhysicalMemory | Select-Object BankLabel, Manufacturer, PartNumber, ConfiguredClockSpeed, Capacity | ConvertTo-Json -Compress"'
+        cmd = 'powershell.exe -NoProfile -Command "Get-CimInstance Win32_PhysicalMemory | Select-Object BankLabel, Manufacturer, PartNumber, ConfiguredClockSpeed, Capacity, SMBIOSMemoryType | ConvertTo-Json -Compress"'
         out = subprocess.check_output(cmd, shell=True, text=True, timeout=2.5).strip()
         if out:
             data = json.loads(out)
@@ -206,10 +246,15 @@ def detect_system_hardware():
                 data = [data]
             mods = []
             max_spd = 0
+            detected_type = "RAM"
+            smbios_map = {24: "DDR3", 26: "DDR4", 30: "LPDDR3", 32: "LPDDR4", 34: "DDR5", 35: "LPDDR5"}
             for item in data:
                 spd = item.get("ConfiguredClockSpeed", 0) or 0
                 if spd > max_spd:
                     max_spd = spd
+                smb = item.get("SMBIOSMemoryType", 0) or 0
+                if smb in smbios_map:
+                    detected_type = smbios_map[smb]
                 mods.append({
                     "bank": item.get("BankLabel", "BANK 0"),
                     "mfg": (item.get("Manufacturer") or "Generic").strip(),
@@ -218,21 +263,50 @@ def detect_system_hardware():
                     "gb": round((item.get("Capacity", 0) or 0) / (1024**3), 1)
                 })
             HARDWARE_INFO["ram_modules"] = mods
+            HARDWARE_INFO["ram_type"] = detected_type
             if max_spd > 0:
                 HARDWARE_INFO["ram_speed_mts"] = max_spd
     except Exception:
         pass
 
+    # Video Controller / GPU Detection
+    try:
+        cmd = 'powershell.exe -NoProfile -Command "Get-CimInstance Win32_VideoController | Select-Object Name, DriverVersion | ConvertTo-Json -Compress"'
+        out = subprocess.check_output(cmd, shell=True, text=True, timeout=2.5).strip()
+        if out:
+            data = json.loads(out)
+            if isinstance(data, dict):
+                data = [data]
+            dgpu = None
+            for g in data:
+                name = g.get("Name", "")
+                if any(k in name for k in ["NVIDIA", "Radeon", "AMD", "Intel Arc"]):
+                    dgpu = g
+                    break
+            if not dgpu and data:
+                dgpu = data[0]
+            if dgpu:
+                if dgpu.get("Name"):
+                    TELEMETRY["gpu_name"] = dgpu["Name"].strip()
+                if dgpu.get("DriverVersion"):
+                    TELEMETRY["gpu_driver"] = dgpu["DriverVersion"].strip()
+    except Exception:
+        pass
+
 
 def update_battery_cim():
-    """Fetches deep battery statistics from Windows ACPI / CIM."""
+    """Fetches deep battery statistics including live factory design capacity from Windows ACPI / CIM."""
     global TELEMETRY
     try:
-        cmd = 'powershell.exe -NoProfile -Command "$f = (Get-CimInstance -Namespace root/wmi -ClassName BatteryFullChargedCapacity -ErrorAction SilentlyContinue).FullChargedCapacity; $s = (Get-CimInstance -Namespace root/wmi -ClassName BatteryStatus -ErrorAction SilentlyContinue); $c = (Get-CimInstance -Namespace root/wmi -ClassName BatteryCycleCount -ErrorAction SilentlyContinue).CycleCount; [PSCustomObject]@{ FullMwh = $f; RemainingMwh = $s.RemainingCapacity; RateMw = $s.DischargeRate; Cycles = $c; Voltage = $s.Voltage } | ConvertTo-Json -Compress"'
+        cmd = 'powershell.exe -NoProfile -Command "$bStatic = (Get-CimInstance -Namespace root/wmi -ClassName BatteryStaticData -ErrorAction SilentlyContinue); $f = (Get-CimInstance -Namespace root/wmi -ClassName BatteryFullChargedCapacity -ErrorAction SilentlyContinue).FullChargedCapacity; $s = (Get-CimInstance -Namespace root/wmi -ClassName BatteryStatus -ErrorAction SilentlyContinue); $c = (Get-CimInstance -Namespace root/wmi -ClassName BatteryCycleCount -ErrorAction SilentlyContinue).CycleCount; [PSCustomObject]@{ DesignMwh = $bStatic.DesignedCapacity; FullMwh = $f; RemainingMwh = $s.RemainingCapacity; RateMw = $s.DischargeRate; Cycles = $c; Voltage = $s.Voltage } | ConvertTo-Json -Compress"'
         out = subprocess.check_output(cmd, shell=True, text=True, timeout=2).strip()
         data = json.loads(out)
+        if data.get("DesignMwh") and int(data["DesignMwh"]) > 0:
+            TELEMETRY["battery_mwh_design"] = int(data["DesignMwh"])
         if data.get("FullMwh"):
             TELEMETRY["battery_mwh_full"] = int(data["FullMwh"])
+            if TELEMETRY["battery_mwh_design"] <= 0:
+                TELEMETRY["battery_mwh_design"] = int(data["FullMwh"])
         if data.get("RemainingMwh"):
             TELEMETRY["battery_mwh_remaining"] = int(data["RemainingMwh"])
         if data.get("RateMw"):
@@ -455,7 +529,7 @@ def poll_fast_telemetry():
                 cpu_p = info['cpu_percent'] or 0.0
                 name = info['name']
 
-                if PROCESS_FILTER_MODE == "heavy" and (cpu_p < 2.0 and mem_mb < 300):
+                if PROCESS_FILTER_MODE == "heavy" and (cpu_p < 0.5 and mem_mb < 100.0):
                     continue
 
                 procs.append({
@@ -624,8 +698,10 @@ def build_header_panel():
     title_text.append(f"{gpu_name} ({gpu_u}% @ {gpu_t} C)", style="bold white")
     title_text.append("  |  RAM: ", style="bold cyan")
     ram_tot = HARDWARE_INFO["total_ram_gb"]
-    ram_spd = HARDWARE_INFO.get("ram_speed_mts", 5600)
-    title_text.append(f"{ram_tot:.0f}GB DDR5-{ram_spd}", style="bold white")
+    ram_spd = HARDWARE_INFO.get("ram_speed_mts", 0)
+    ram_type = HARDWARE_INFO.get("ram_type", "RAM")
+    ram_tag = f"{ram_type}-{ram_spd}" if ram_spd > 0 else ram_type
+    title_text.append(f"{ram_tot:.0f}GB {ram_tag}", style="bold white")
 
     return Panel(
         Align.center(title_text),
@@ -696,8 +772,16 @@ def build_cpu_ram_panel():
 
     table.add_row("RAM Usage", make_progress_bar(ram_pct, width=14, color=ram_color))
     
-    speed_tag = f" [dim](DDR5-{ram_speed} MT/s)[/dim]" if ram_speed > 0 else ""
+    ram_type = HARDWARE_INFO.get("ram_type", "RAM")
+    speed_tag = f" [dim]({ram_type}-{ram_speed} MT/s)[/dim]" if ram_speed > 0 else f" [dim]({ram_type})[/dim]"
     table.add_row("Memory Vol", f"[bold white]{ram_used:.1f} GB[/bold white] / [dim]{ram_total:.1f} GB[/dim]{speed_tag}")
+
+    gpu_t = TELEMETRY.get("gpu_temp", 0)
+    gpu_u = TELEMETRY.get("gpu_util", 0)
+    gpu_p = TELEMETRY.get("gpu_power", 0.0)
+    if gpu_t > 0 or gpu_u > 0:
+        g_col = "red" if gpu_t >= 80 else "yellow" if gpu_t >= 65 else "green"
+        table.add_row("GPU Active", f"[{g_col}]{gpu_t} C[/{g_col}] [dim]| {gpu_u}% Util | {gpu_p:.1f}W[/dim]")
 
     swap_u = TELEMETRY.get("swap_used_gb", 0.0)
     swap_t = TELEMETRY.get("swap_total_gb", 0.0)
@@ -847,6 +931,23 @@ def build_battery_focus_view():
     table.add_row("Live Power Draw", f"{wattage:.2f} Watts", "MEASURED")
     table.add_row("4-Hour Target Budget", f"Keep under {budget_w} Watts for 4h battery", "BUDGET TARGET")
     table.add_row("Estimated Runtime", format_secs(secs), "ACTIVE")
+
+    net_str = "Offline / Disconnected"
+    net_status = "OFFLINE"
+    try:
+        stats = psutil.net_if_stats()
+        active_nets = []
+        for iface, s in stats.items():
+            if s.isup and not iface.startswith("Loopback") and "Virtual" not in iface and "vEthernet" not in iface:
+                speed_str = f" ({s.speed} Mbps)" if s.speed > 0 else ""
+                active_nets.append(f"{iface}{speed_str}")
+        if active_nets:
+            net_str = ", ".join(active_nets[:2])
+            net_status = "CONNECTED"
+    except Exception:
+        pass
+    table.add_row("Network Adapters", f"[bold white]{net_str}[/bold white]", net_status)
+
     table.add_row("Optimizer & Cleanup", "Press [bold yellow][O][/bold yellow] or [bold yellow][C][/bold yellow] to run Battery Cleanup (User/Admin)", "[bold cyan]AVAILABLE[/bold cyan]")
 
     return Panel(table, title="[bold cyan]DEEP BATTERY HEALTH, TRUE CALIBRATION & OPTIMIZER[/bold cyan]", border_style="cyan", box=box.ROUNDED)
@@ -920,6 +1021,62 @@ def build_cpu_focus_view():
         Layout(build_process_table(limit=6), size=9),
     )
     return content
+
+
+def build_gpu_focus_view():
+    """Deep dedicated GPU metrics, thermals, VRAM utilization, clocks, and power draw."""
+    gpu_name = TELEMETRY.get("gpu_name", "Discrete GPU")
+    gpu_driver = TELEMETRY.get("gpu_driver", "N/A")
+    gpu_util = TELEMETRY.get("gpu_util", 0)
+    gpu_temp = TELEMETRY.get("gpu_temp", 0)
+    gpu_hotspot = TELEMETRY.get("gpu_hotspot_c", 0)
+    vrm_temp = TELEMETRY.get("vrm_temp_c", 0)
+    gpu_power = TELEMETRY.get("gpu_power", 0.0)
+    vram_tot = TELEMETRY.get("gpu_vram_total_mb", 0)
+    vram_used = TELEMETRY.get("gpu_vram_used_mb", 0)
+    mem_clock = TELEMETRY.get("gpu_mem_clock_mhz", 0)
+    core_clock = TELEMETRY.get("gpu_core_clock_mhz", 0)
+    throttle = TELEMETRY.get("gpu_throttle", "None")
+    pcie_link = TELEMETRY.get("gpu_pcie_link", "N/A")
+    fan_rpm = TELEMETRY.get("gpu_fan_rpm", 0)
+
+    vram_pct = round((vram_used / max(1, vram_tot)) * 100.0, 1) if vram_tot > 0 else 0.0
+
+    table = Table(box=box.ROUNDED, expand=True, padding=(0, 2))
+    table.add_column("GPU TELEMETRY METRIC", style="bold cyan", width=26)
+    table.add_column("MEASUREMENT / LIVE DATA", style="bold white")
+    table.add_column("ENGINE STATUS", style="bold green", width=22)
+
+    table.add_row("Device Model", f"[bold yellow]{gpu_name}[/bold yellow]", "ONLINE")
+    table.add_row("Driver & PCIe Link", f"Driver: [bold white]{gpu_driver}[/bold white] | Bus: [dim]{pcie_link}[/dim]", "SYNCED")
+
+    u_col = "green" if gpu_util < 50 else "yellow" if gpu_util < 85 else "red"
+    table.add_row("GPU Compute Load", make_progress_bar(gpu_util, width=24, color=u_col), f"{gpu_util}% Utilized")
+
+    if vram_tot > 0:
+        vr_col = "green" if vram_pct < 70 else "yellow" if vram_pct < 90 else "red"
+        table.add_row("Dedicated VRAM Usage", f"{make_progress_bar(vram_pct, width=20, color=vr_col)} [dim]{vram_used:,} MB / {vram_tot:,} MB[/dim]", f"{vram_pct}% VRAM")
+
+    t_col = "red" if gpu_temp >= 80 else "yellow" if gpu_temp >= 65 else "green"
+    hot_str = f" [dim](Hotspot: {gpu_hotspot} C)[/dim]" if gpu_hotspot > 0 else ""
+    table.add_row("GPU Core Thermals", f"[{t_col}]{gpu_temp} C[/{t_col}]{hot_str}", "OPTIMAL" if gpu_temp < 75 else "ELEVATED")
+
+    if vrm_temp > 0 or fan_rpm > 0:
+        vrm_str = f"VRM: {vrm_temp} C | " if vrm_temp > 0 else ""
+        fan_str = f"Fan: {fan_rpm} RPM" if fan_rpm > 0 else ""
+        table.add_row("Cooling & VRM", f"[dim]{vrm_str}{fan_str}[/dim]", "ACTIVE")
+
+    table.add_row("Live Graphics Power", f"[bold magenta]{gpu_power:.1f} Watts[/bold magenta]", "MEASURED")
+    table.add_row("Core & Memory Clocks", f"Core: [bold white]{core_clock} MHz[/bold white] | Mem: [dim]{mem_clock} MHz[/dim]", "SYNCHRONIZED")
+    table.add_row("Thermal Throttle State", f"[bold white]{throttle}[/bold white]", "[bold green]CLEAR[/bold green]" if throttle in ["None", "0x0000000000000000", "0x0000000000000004"] else "[bold red]THROTTLED[/bold red]")
+
+    bench = TELEMETRY.get("benchmarks", {})
+    if bench.get("gpu_stress_peak_c", 0.0) > 0:
+        table.add_row("Last GPU Stress Test", f"Peak: [yellow]{bench['gpu_stress_peak_c']} C[/yellow] (+{bench['gpu_stress_delta_c']} C) | Pwr: {bench['gpu_stress_power_w']} W | Clk: {bench['gpu_stress_clock_mhz']} MHz", "[bold green]RECORDED[/bold green]")
+    else:
+        table.add_row("Hardware Stress Test", "Press [bold yellow][B][/bold yellow] to run 524,288-thread CUDA stress burn-in", "[bold cyan]AVAILABLE[/bold cyan]")
+
+    return Panel(table, title="[bold cyan]DEDICATED GRAPHICS (GPU) TELEMETRY & HARDWARE CONTROLS[/bold cyan]", border_style="cyan", box=box.ROUNDED)
 
 
 def build_storage_focus_view():
@@ -1207,6 +1364,19 @@ def build_sensors_view():
 build_hwinfo_view = build_sensors_view
 
 
+def safe_panel(builder_fn, *args, **kwargs):
+    """Safely executes a panel builder function with an error boundary."""
+    try:
+        return builder_fn(*args, **kwargs)
+    except Exception as e:
+        return Panel(
+            f"[bold red]Panel Render Error:[/bold red] {e}\n[dim]The dashboard remains active. Press [1] for All view.[/dim]",
+            title="[bold red]RENDER ERROR[/bold red]",
+            border_style="red",
+            box=box.ROUNDED,
+        )
+
+
 def build_footer_panel():
     """Interactive hotkey footer bar with deep sensors integration."""
     global STATUS_MESSAGE, STATUS_TIME
@@ -1214,7 +1384,8 @@ def build_footer_panel():
     rate_str = f"{REFRESH_RATE:.1f}s"
 
     footer_text = Text()
-    footer_text.append(" [<-/-> or 1-8] Views ", style="bold white on #2563eb")
+    footer_text.append(" [<-/-> or 1-9] Views ", style="bold white on #2563eb")
+    footer_text.append(" [G] GPU ", style="bold white on #059669")
     footer_text.append(" [M] Min/Max ", style="bold white on #0891b2")
     footer_text.append(" [B] Bench/Stress ", style="bold white on #b45309")
     footer_text.append(" [T] SSD TRIM ", style="bold white on #059669")
@@ -1232,7 +1403,7 @@ def build_footer_panel():
 
 
 def render_dashboard():
-    """Assembles responsive layout."""
+    """Assembles responsive layout with complete error boundary isolation."""
     width = console.size.width
 
     layout = Layout()
@@ -1242,8 +1413,8 @@ def render_dashboard():
         Layout(name="footer", size=3),
     )
 
-    layout["header"].update(build_header_panel())
-    layout["footer"].update(build_footer_panel())
+    layout["header"].update(safe_panel(build_header_panel))
+    layout["footer"].update(safe_panel(build_footer_panel))
 
     if CURRENT_VIEW == "all":
         if width >= 115:
@@ -1253,11 +1424,11 @@ def render_dashboard():
                 Layout(name="process_table"),
             )
             layout["top_cards"].split_row(
-                Layout(build_battery_panel(), ratio=1),
-                Layout(build_cpu_ram_panel(), ratio=1),
-                Layout(build_storage_panel(), ratio=1),
+                Layout(safe_panel(build_battery_panel), ratio=1),
+                Layout(safe_panel(build_cpu_ram_panel), ratio=1),
+                Layout(safe_panel(build_storage_panel), ratio=1),
             )
-            layout["process_table"].update(build_process_table(limit=6))
+            layout["process_table"].update(safe_panel(build_process_table, limit=6))
         else:
             # 2-column or stacked compact mode
             layout["body"].split_column(
@@ -1265,34 +1436,37 @@ def render_dashboard():
                 Layout(name="process_table"),
             )
             layout["top_cards"].split_row(
-                Layout(build_battery_panel(), ratio=1),
-                Layout(build_cpu_ram_panel(), ratio=1),
+                Layout(safe_panel(build_battery_panel), ratio=1),
+                Layout(safe_panel(build_cpu_ram_panel), ratio=1),
             )
-            layout["process_table"].update(build_process_table(limit=5))
+            layout["process_table"].update(safe_panel(build_process_table, limit=5))
 
     elif CURRENT_VIEW == "battery":
-        layout["body"].update(build_battery_focus_view())
+        layout["body"].update(safe_panel(build_battery_focus_view))
 
     elif CURRENT_VIEW == "cpu":
-        layout["body"].update(build_cpu_focus_view())
+        layout["body"].update(safe_panel(build_cpu_focus_view))
 
     elif CURRENT_VIEW == "ram":
         layout["body"].split_column(
-            Layout(build_cpu_ram_panel(), size=9),
-            Layout(build_process_table(limit=12)),
+            Layout(safe_panel(build_cpu_ram_panel), size=9),
+            Layout(safe_panel(build_process_table, limit=12)),
         )
 
+    elif CURRENT_VIEW == "gpu":
+        layout["body"].update(safe_panel(build_gpu_focus_view))
+
     elif CURRENT_VIEW == "storage":
-        layout["body"].update(build_storage_focus_view())
+        layout["body"].update(safe_panel(build_storage_focus_view))
 
     elif CURRENT_VIEW == "processes":
-        layout["body"].update(build_process_table(limit=16))
+        layout["body"].update(safe_panel(build_process_table, limit=16))
 
     elif CURRENT_VIEW == "logs":
-        layout["body"].update(build_logs_view())
+        layout["body"].update(safe_panel(build_logs_view))
 
     elif CURRENT_VIEW in ["sensors", "hwinfo"]:
-        layout["body"].update(build_sensors_view())
+        layout["body"].update(safe_panel(build_sensors_view))
 
     return layout
 
@@ -1345,7 +1519,17 @@ def run_interactive_benchmark(live):
         console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
 
     elif choice == "2":
-        console.print("\n[bold yellow]Starting 10s Multi-Core CPU Stress Test across all logical threads...[/bold yellow]")
+        dur = 10
+        try:
+            d_in = console.input("[bold cyan]Select duration: [1] 10s Quick  [2] 30s Standard  [3] 60s Extended (default: 10s): [/bold cyan]").strip()
+            if d_in == "2":
+                dur = 30
+            elif d_in == "3":
+                dur = 60
+        except Exception:
+            dur = 10
+
+        console.print(f"\n[bold yellow]Starting {dur}s Multi-Core CPU Stress Test across all logical threads...[/bold yellow]")
         console.print("[dim]Monitoring thermal rise and clock frequency shifts...[/dim]\n")
 
         def on_cpu_progress(elapsed, total, temp, freq):
@@ -1354,7 +1538,7 @@ def run_interactive_benchmark(live):
             sys.stdout.write(f"\r  [{bar}] {elapsed:.0f}s/{total}s | Temp: {temp:.1f} C | Freq: {freq} MHz")
             sys.stdout.flush()
 
-        res = bench_engine.run_cpu_stress_test(duration=10, progress_cb=on_cpu_progress)
+        res = bench_engine.run_cpu_stress_test(duration=dur, progress_cb=on_cpu_progress)
         print()
         TELEMETRY["benchmarks"]["stress_peak_c"] = res["peak_temp_c"]
         TELEMETRY["benchmarks"]["stress_delta_c"] = res["temp_delta_c"]
@@ -1376,7 +1560,17 @@ def run_interactive_benchmark(live):
         console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
 
     elif choice == "3":
-        console.print("\n[bold yellow]Starting 10s Dedicated GPU Hardware Stress Test across 524,288 CUDA threads...[/bold yellow]")
+        dur = 10
+        try:
+            d_in = console.input("[bold cyan]Select duration: [1] 10s Quick  [2] 30s Standard  [3] 60s Extended (default: 10s): [/bold cyan]").strip()
+            if d_in == "2":
+                dur = 30
+            elif d_in == "3":
+                dur = 60
+        except Exception:
+            dur = 10
+
+        console.print(f"\n[bold yellow]Starting {dur}s Dedicated GPU Hardware Stress Test across 524,288 CUDA threads...[/bold yellow]")
         console.print("[dim]Monitoring live GPU utilization %, temperature rise, clock MHz, and power draw...[/dim]\n")
 
         def on_gpu_progress(elapsed, total, temp, power, util, clock):
@@ -1385,7 +1579,7 @@ def run_interactive_benchmark(live):
             sys.stdout.write(f"\r  [{bar}] {elapsed:.0f}s/{total}s | Temp: {temp:.1f} C | Pwr: {power:.1f} W | Util: {util}% | Clk: {clock} MHz")
             sys.stdout.flush()
 
-        res = bench_engine.run_gpu_stress_test(duration=10, progress_cb=on_gpu_progress)
+        res = bench_engine.run_gpu_stress_test(duration=dur, progress_cb=on_gpu_progress)
         print()
         if res.get("status") == "PASS":
             TELEMETRY["benchmarks"]["gpu_stress_peak_c"] = res["peak_temp_c"]
@@ -1414,7 +1608,17 @@ def run_interactive_benchmark(live):
         console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
 
     elif choice == "4":
-        console.print("\n[bold yellow]Starting 10s Combined Full-System Burn-In Stress Test (CPU + GPU + RAM)...[/bold yellow]")
+        dur = 10
+        try:
+            d_in = console.input("[bold cyan]Select duration: [1] 10s Quick  [2] 30s Standard  [3] 60s Extended (default: 10s): [/bold cyan]").strip()
+            if d_in == "2":
+                dur = 30
+            elif d_in == "3":
+                dur = 60
+        except Exception:
+            dur = 10
+
+        console.print(f"\n[bold yellow]Starting {dur}s Combined Full-System Burn-In Stress Test (CPU + GPU + RAM)...[/bold yellow]")
         console.print("[dim]Simultaneously saturating all CPU threads and dedicated GPU CUDA cores...[/dim]\n")
 
         def on_sys_progress(elapsed, total, c_temp, g_temp, g_power, g_util):
@@ -1423,7 +1627,7 @@ def run_interactive_benchmark(live):
             sys.stdout.write(f"\r  [{bar}] {elapsed:.0f}s/{total}s | CPU: {c_temp:.1f} C | GPU: {g_temp:.1f} C | GPU Pwr: {g_power:.1f} W ({g_util}%)")
             sys.stdout.flush()
 
-        res = bench_engine.run_system_stress_test(duration=10, progress_cb=on_sys_progress)
+        res = bench_engine.run_system_stress_test(duration=dur, progress_cb=on_sys_progress)
         print()
         if res.get("status") == "PASS":
             TELEMETRY["benchmarks"]["stress_peak_c"] = res["cpu_peak_temp_c"]
@@ -1459,7 +1663,7 @@ def run_interactive_benchmark(live):
         console.print("[bold cyan]=============================================================================[/bold cyan]")
         console.print("  Select target component for continuous burn-in:")
         console.print("  [bold yellow][1][/bold yellow] Combined Full-System Burn-In (CPU + Dedicated GPU + RAM)")
-        console.print("  [bold yellow][2][/bold yellow] Dedicated GPU Hardware Stress (RTX 5050 CUDA 100% @ 2.7+ GHz)")
+        console.print("  [bold yellow][2][/bold yellow] Dedicated GPU Hardware Stress (CUDA 100% Load & High-Clock Burn-In)")
         console.print("  [bold yellow][3][/bold yellow] Multi-Core CPU Thermal Stress (All Logical Processor Threads)")
         console.print("  [bold yellow][0][/bold yellow] Cancel")
         console.print("[bold cyan]=============================================================================[/bold cyan]")
@@ -1703,7 +1907,10 @@ def handle_kill_process_dialog(live):
             name = p.name()
             confirm = console.input(f"[bold red]Terminate {name} (PID: {target_pid})? [y/N]: [/bold red]").strip().lower()
             if confirm == 'y':
-                p.terminate()
+                try:
+                    p.kill()
+                except Exception:
+                    p.terminate()
                 STATUS_MESSAGE = f"Terminated {name} (PID: {target_pid}) successfully."
                 STATUS_TIME = time.time()
             else:
@@ -1720,6 +1927,7 @@ def toggle_refresh_rate():
     global REFRESH_INDEX, REFRESH_RATE, STATUS_MESSAGE, STATUS_TIME
     REFRESH_INDEX = (REFRESH_INDEX + 1) % len(REFRESH_RATES)
     REFRESH_RATE = REFRESH_RATES[REFRESH_INDEX]
+    save_preferences()
     STATUS_MESSAGE = f"Refresh interval set to {REFRESH_RATE}s."
     STATUS_TIME = time.time()
 
@@ -1728,6 +1936,7 @@ def toggle_process_sort():
     """Toggles sort by CPU vs RAM."""
     global PROCESS_SORT_MODE, STATUS_MESSAGE, STATUS_TIME
     PROCESS_SORT_MODE = "ram" if PROCESS_SORT_MODE == "cpu" else "cpu"
+    save_preferences()
     STATUS_MESSAGE = f"Process table sorting by {PROCESS_SORT_MODE.upper()}."
     STATUS_TIME = time.time()
 
@@ -1739,6 +1948,7 @@ def toggle_process_filter():
         PROCESS_FILTER_MODE = "heavy"
     else:
         PROCESS_FILTER_MODE = "all"
+    save_preferences()
     STATUS_MESSAGE = f"Process filter set to {PROCESS_FILTER_MODE.upper()}."
     STATUS_TIME = time.time()
 
@@ -1748,6 +1958,9 @@ def main():
     
     # Hide cursor
     console.show_cursor(False)
+
+    # Load persistent user preferences
+    load_preferences()
 
     # Initial fast hardware detection
     detect_system_hardware()
@@ -1764,7 +1977,7 @@ def main():
     worker = threading.Thread(target=telemetry_background_worker, daemon=True)
     worker.start()
 
-    views_list = ["all", "battery", "cpu", "ram", "storage", "processes", "logs", "sensors"]
+    views_list = ["all", "battery", "cpu", "ram", "gpu", "storage", "processes", "logs", "sensors"]
     last_render_time = time.time()
 
     with Live(render_dashboard(), refresh_per_second=20, screen=True, console=console) as live:
@@ -1796,6 +2009,8 @@ def main():
                         CURRENT_VIEW = "cpu"; view_changed = True
                     elif key == b'4':
                         CURRENT_VIEW = "ram"; view_changed = True
+                    elif key in [b'g', b'G', b'9']:
+                        CURRENT_VIEW = "gpu"; view_changed = True
                     elif key == b'5':
                         CURRENT_VIEW = "storage"; view_changed = True
                     elif key == b'6':
@@ -1812,6 +2027,7 @@ def main():
                         view_changed = True
                     elif key in [b'm', b'M']:
                         CPU_MINIMIZE_MODE = not CPU_MINIMIZE_MODE
+                        save_preferences()
                         STATUS_MESSAGE = f"CPU view: {'MINIMIZED (Clean Overview)' if CPU_MINIMIZE_MODE else 'EXPANDED (Per-Thread Matrix)'}"
                         STATUS_TIME = time.time()
                         view_changed = True

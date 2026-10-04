@@ -113,6 +113,8 @@ function Show-LogViewer {
                     Write-Host $formatted -ForegroundColor White
                 }
             }
+        } else {
+            Write-Host " [INFO] No telemetry rows recorded yet in this session." -ForegroundColor DarkGray
         }
     }
 

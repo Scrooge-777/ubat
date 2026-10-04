@@ -15,12 +15,14 @@ $ModuleDir = $PSScriptRoot
 $RootDir = Split-Path $ModuleDir -Parent
 $CorePath = Join-Path $RootDir "core\HardwareProfile.ps1"
 $HealthPath = Join-Path $RootDir "core\BatteryHealthModel.ps1"
+$HelpersPath = Join-Path $RootDir "core\ConsoleHelpers.ps1"
 $LogsDir = Join-Path $RootDir "logs"
 $LogFile = Join-Path $LogsDir "current-session.csv"
 
-# Import Core & Health Engines
+# Import Core, Health & Shared Console Helpers
 . $CorePath
 . $HealthPath
+. $HelpersPath
 
 $hw = Get-HardwareProfile
 $healthInfo = Get-BatteryHealthAssessment
@@ -59,49 +61,8 @@ if (-not $sessionStart) {
     $sessionStart = Get-Date
 }
 
-# --- MOTIONLESS FLICKER-FREE CONSOLE HELPERS ---
-function Hide-ConsoleCursor {
-    try { [Console]::CursorVisible = $false } catch {}
-    try { [Console]::Write("`e[?25l") } catch {}
-}
-
-function Show-ConsoleCursor {
-    try { [Console]::CursorVisible = $true } catch {}
-    try { [Console]::Write("`e[?25h") } catch {}
-}
-
-function Reset-ConsoleCursor {
-    try {
-        [Console]::SetCursorPosition(0, 0)
-    } catch {
-        try { [Console]::Write("`e[H") } catch {}
-    }
-}
-
-function Get-TermWidth {
-    $w = 88
-    try {
-        if ([Console]::WindowWidth -gt 1) {
-            $w = [Console]::WindowWidth - 1
-            if ($w -lt 35) { $w = 35 }
-        }
-    } catch { $w = 88 }
-    return $w
-}
-
-function Write-LineClean {
-    param(
-        [string]$Text = "",
-        [ConsoleColor]$ForegroundColor = [ConsoleColor]::White
-    )
-    $termWidth = Get-TermWidth
-    $cleanText = if ($Text.Length -lt $termWidth) {
-        $Text.PadRight($termWidth)
-    } else {
-        $Text.Substring(0, $termWidth)
-    }
-    Write-Host "$cleanText`e[K" -ForegroundColor $ForegroundColor
-}
+# Shared console helpers (Hide-ConsoleCursor, Show-ConsoleCursor, Reset-ConsoleCursor,
+# Get-TermWidth, Write-LineClean) are provided by core\ConsoleHelpers.ps1 (imported above).
 
 function Write-BlockClean {
     param(

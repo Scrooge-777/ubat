@@ -17,4 +17,6 @@ Desktop.ini
 __pycache__/
 *.pyc
 *.pyo
-
+# User local preferences & benchmark history
+ubat-prefs.json
+logs/*.json

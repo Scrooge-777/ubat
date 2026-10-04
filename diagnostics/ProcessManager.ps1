@@ -7,6 +7,11 @@
     and monitors memory/CPU drain without WMI latency.
 #>
 
+param(
+    [switch]$Kill,
+    [switch]$Monitor
+)
+
 $ScriptDir = Split-Path $PSScriptRoot -Parent
 $cpuCount = [Environment]::ProcessorCount
 $totalRamMB = 16384
@@ -16,7 +21,7 @@ try {
 } catch {}
 
 $sortMode = "CPU"
-$statusMsg = ""
+$statusMsg = if ($Kill) { "KILL MODE ACTIVE: Enter target PID below to terminate process." } else { "" }
 
 function Get-FastProcessTable {
     param([string]$Sort = "CPU")
@@ -80,7 +85,7 @@ while ($true) {
     } catch { $w = 88 }
 
     Write-Host ("=" * $w) -ForegroundColor Cyan
-    $title = "PROCESS MANAGER & RESORUCE KILLER"
+    $title = if ($Kill) { "FAST PROCESS TERMINATOR & KILLER" } else { "PROCESS MONITOR & RESOURCE MANAGER" }
     $spaces = [math]::Max(0, [math]::Floor(($w - $title.Length) / 2))
     $titleText = if ($title.Length -gt $w) { $title.Substring(0, $w) } else { (" " * $spaces) + $title }
     Write-Host $titleText -ForegroundColor Yellow

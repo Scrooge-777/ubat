@@ -9,8 +9,10 @@
 $ScriptDir = $PSScriptRoot
 $CoreDir = Join-Path $ScriptDir "core"
 $HwPath = Join-Path $CoreDir "HardwareProfile.ps1"
+$HelpersPath = Join-Path $CoreDir "ConsoleHelpers.ps1"
 
 . $HwPath
+. $HelpersPath
 $hw = Get-HardwareProfile
 
 # Dynamic laptop banner
@@ -23,48 +25,7 @@ $laptopTitle = if ($rawModel -match [regex]::Escape($rawMfg)) {
 }
 $bannerTitle = "OMNI HARDWARE TELEMETRY & SYSTEM MONITOR - $laptopTitle"
 
-function Hide-Cursor {
-    try { [Console]::CursorVisible = $false } catch {}
-    try { [Console]::Write("`e[?25l") } catch {}
-}
-
-function Show-Cursor {
-    try { [Console]::CursorVisible = $true } catch {}
-    try { [Console]::Write("`e[?25h") } catch {}
-}
-
-function Reset-Cursor {
-    try {
-        [Console]::SetCursorPosition(0, 0)
-    } catch {
-        try { [Console]::Write("`e[H") } catch {}
-    }
-}
-
-function Get-Width {
-    $w = 88
-    try {
-        if ([Console]::WindowWidth -gt 1) {
-            $w = [Console]::WindowWidth - 1
-            if ($w -lt 35) { $w = 35 }
-        }
-    } catch { $w = 88 }
-    return $w
-}
-
-function Write-LineClean {
-    param(
-        [string]$Text = "",
-        [ConsoleColor]$ForegroundColor = [ConsoleColor]::White
-    )
-    $termWidth = Get-Width
-    $cleanText = if ($Text.Length -lt $termWidth) {
-        $Text.PadRight($termWidth)
-    } else {
-        $Text.Substring(0, $termWidth)
-    }
-    Write-Host "$cleanText`e[K" -ForegroundColor $ForegroundColor
-}
+# Console helper functions are provided by core\ConsoleHelpers.ps1 (dot-sourced above)
 
 function Format-MenuOptionLine {
     param(
@@ -258,14 +219,22 @@ function Invoke-AutoResizeCalibrator {
         Write-LineClean " RESPONSIVE 10-ALERT SYSTEM STATUS & LAYOUT VERIFICATION:" Yellow
         Write-LineClean "" White
 
-        # 10 Responsive Alert Elements
+        # 10 Responsive Demo Elements (live layout preview - uses real hw info where available)
+        $cpuTempC = if ($hw.CpuTempC -gt 0) { $hw.CpuTempC } else { 48 }
+        $cpuTempPct = [math]::Min(100, [int]($cpuTempC))
+        $ssdWearPct = if ($hw.DiskWearPct -ge 0) { $hw.DiskWearPct } else { 0 }
+        $battHealthPct = if ($hw.HealthPct -gt 0) { [int]$hw.HealthPct } else { 96 }
+        $cpuStr = if ($hw.CpuName) { $hw.CpuName.Substring(0, [math]::Min(22, $hw.CpuName.Length)) } else { "CPU" }
+        $diskStr = if ($hw.DiskModel) { $hw.DiskModel.Substring(0, [math]::Min(22, $hw.DiskModel.Length)) } else { "NVMe SSD" }
+        $gpuStr = if ($hw.DgpuName) { $hw.DgpuName.Substring(0, [math]::Min(15, $hw.DgpuName.Length)) } else { "GPU" }
+        $ramStr = "$($hw.TotalRamGB) GB @ $($hw.RamSpeedMTs) MT/s"
         $alerts = @(
-            @{ Id = "01"; Subsys = "ACPI THERMALS  "; Status = "NOMINAL"; Val = "48.0 C (Cool)"; Pct = 48 }
-            @{ Id = "02"; Subsys = "CPU THROTTLING "; Status = "CLEAR  "; Val = "0% Throttling Vector"; Pct = 0 }
-            @{ Id = "03"; Subsys = "RTX 5050 CUDA  "; Status = "ACTIVE "; Val = "524,288 Threads Ready"; Pct = 100 }
-            @{ Id = "04"; Subsys = "RAM SATURATION "; Status = "PEAK   "; Val = "DDR5 Pinned at 95%+"; Pct = 96 }
-            @{ Id = "05"; Subsys = "NVMe SSD WEAR  "; Status = "HEALTHY"; Val = "0% Wear Degradation"; Pct = 100 }
-            @{ Id = "06"; Subsys = "BATTERY DRAIN  "; Status = "OPTIMAL"; Val = "Discharge <= 15W Target"; Pct = 85 }
+            @{ Id = "01"; Subsys = "ACPI THERMALS  "; Status = "NOMINAL"; Val = "$cpuTempC C (ACPI Zone)"; Pct = $cpuTempPct }
+            @{ Id = "02"; Subsys = "CPU ENGINE     "; Status = "ACTIVE "; Val = "$cpuStr"; Pct = 80 }
+            @{ Id = "03"; Subsys = "DEDICATED GPU  "; Status = "ACTIVE "; Val = "$gpuStr"; Pct = 100 }
+            @{ Id = "04"; Subsys = "SYSTEM MEMORY  "; Status = "LOADED "; Val = $ramStr; Pct = 75 }
+            @{ Id = "05"; Subsys = "NVMe SSD WEAR  "; Status = "HEALTHY"; Val = "$ssdWearPct% Wear ($diskStr)"; Pct = 100 - $ssdWearPct }
+            @{ Id = "06"; Subsys = "BATTERY HEALTH "; Status = "OPTIMAL"; Val = "$battHealthPct% Capacity Remaining"; Pct = $battHealthPct }
             @{ Id = "07"; Subsys = "PCIe NATIVE ASPM";Status = "LOCKED "; Val = "DisableNativeAspm = 1"; Pct = 100 }
             @{ Id = "08"; Subsys = "DRIVER WudfRd  "; Status = "SYSTEM "; Val = "Start Type 1 (Verified)"; Pct = 100 }
             @{ Id = "09"; Subsys = "BUFFER AUTO-FIT"; Status = "SYNCED "; Val = "Edge No-Wrap Guard Active"; Pct = 100 }
@@ -468,6 +437,17 @@ while ($true) {
             # Live All-in-One Monitor
             $tuiPath = Join-Path $ScriptDir "tui\ubat_tui.py"
             if (Get-Command python -ErrorAction SilentlyContinue) {
+                # Pre-flight check for rich & psutil dependencies
+                python -c "import sys, rich, psutil; sys.exit(0)" 2>$null
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Host " [INFO] Installing required Python libraries (rich, psutil)..." -ForegroundColor Yellow
+                    $reqPath = Join-Path $ScriptDir "requirements.txt"
+                    if (Test-Path $reqPath) {
+                        python -m pip install -r $reqPath --quiet
+                    } else {
+                        python -m pip install rich psutil --quiet
+                    }
+                }
                 python $tuiPath
             } else {
                 & "$ScriptDir\monitor\LiveMonitor.ps1" -InitialView "menu"
@@ -600,13 +580,15 @@ while ($true) {
             # Process Manager Hub (Option inside an option)
             $subOpts = @(
                 [PSCustomObject]@{ Key = "1"; Title = "All-in-One Process Monitor";     Desc = "Fast process table sorted by resource usage" }
-                [PSCustomObject]@{ Key = "2"; Title = "Interactive Process Killer";     Desc = "Launch manager and enter PID to terminate" }
+                [PSCustomObject]@{ Key = "2"; Title = "Interactive Process Killer";     Desc = "Launch manager in kill mode to terminate by PID" }
                 [PSCustomObject]@{ Key = "0"; Title = "Return to Main Menu";             Desc = "Back to subsystem launcher" }
             )
-            $subPick = Show-SubMenu -HubTitle "PROCESS MANAGER & RESORUCE KILLER HUB" -Options $subOpts
+            $subPick = Show-SubMenu -HubTitle "PROCESS MANAGER & RESOURCE KILLER HUB" -Options $subOpts
             Clear-Host
-            if ($subPick -eq "1" -or $subPick -eq "2") {
-                & "$ScriptDir\diagnostics\ProcessManager.ps1"
+            if ($subPick -eq "1") {
+                & "$ScriptDir\diagnostics\ProcessManager.ps1" -Monitor
+            } elseif ($subPick -eq "2") {
+                & "$ScriptDir\diagnostics\ProcessManager.ps1" -Kill
             }
         }
 
@@ -636,6 +618,9 @@ while ($true) {
                     Write-Host "Opened logs folder in File Explorer." -ForegroundColor Green
                     Start-Sleep -Seconds 1
                 }
+                "0" {
+                    # Return to main menu
+                }
             }
         }
 
@@ -662,22 +647,30 @@ while ($true) {
                     [Console]::ReadKey($true) | Out-Null
                 }
                 "2" {
-                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -CpuStress -StressDuration 10
+                    $dur = Read-Host " Select duration: [1] 10s Quick  [2] 30s Standard  [3] 60s Extended (default 10s)"
+                    $dSec = switch ($dur.Trim()) { "2" { 30 } "3" { 60 } default { 10 } }
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -CpuStress -StressDuration $dSec
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }
                 "3" {
-                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -GpuStress -StressDuration 10
+                    $dur = Read-Host " Select duration: [1] 10s Quick  [2] 30s Standard  [3] 60s Extended (default 10s)"
+                    $dSec = switch ($dur.Trim()) { "2" { 30 } "3" { 60 } default { 10 } }
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -GpuStress -StressDuration $dSec
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }
                 "4" {
-                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -RamStress -StressDuration 10
+                    $dur = Read-Host " Select duration: [1] 10s Quick  [2] 30s Standard  [3] 60s Extended (default 10s)"
+                    $dSec = switch ($dur.Trim()) { "2" { 30 } "3" { 60 } default { 10 } }
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -RamStress -StressDuration $dSec
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }
                 "5" {
-                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -SystemStress -StressDuration 10
+                    $dur = Read-Host " Select duration: [1] 10s Quick  [2] 30s Standard  [3] 60s Extended (default 10s)"
+                    $dSec = switch ($dur.Trim()) { "2" { 30 } "3" { 60 } default { 10 } }
+                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -SystemStress -StressDuration $dSec
                     Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
                     [Console]::ReadKey($true) | Out-Null
                 }

@@ -103,15 +103,18 @@ Run **`omni --menu`** or **`ubat --menu`**:
 
 ### Option B: Direct Terminal Launch
 Typing **`omni`** or **`ubat`** from any terminal opens the live monitor directly:
-* Arrow keys `[<- / ->]` or `[1-8]` cycle between All, Battery, CPU, RAM, Storage, Processes, Logs, and Sensors views.
-* `[B]` launches the interactive Benchmark & Hardware Stress Testing Suite.
+* Python dependencies (`rich`, `psutil`) are automatically verified or installed from `requirements.txt`.
+* Arrow keys `[<- / ->]` or `[1-9]` cycle between All, Battery, CPU, RAM, GPU, Storage, Processes, Logs, and Sensors views.
+* `[G]` or `[9]` switches directly to the dedicated GPU focus view with VRAM bars, clocks, PCIe link, power draw, and throttle flags.
+* `[M]` toggles between Minimized (clean overview) and Expanded (per-core matrix) CPU modes (persisted in `ubat-prefs.json`).
+* `[B]` launches the interactive Benchmark & Hardware Stress Testing Suite with selectable 10s, 30s, or 60s durations.
 * `[8]` or `[H]` opens the Native Deep Sensor Matrix and triggers an instant hardware bus poll.
 * `[T]` triggers real-time volume TRIM & SSD optimization on all mounted partitions.
 * `[O]` opens the `logs` folder in Windows File Explorer.
-* `[K]` prompts for PID termination directly inside the terminal.
-* `[R]` toggles refresh interval (0.25s, 0.5s, 1.0s, 2.0s).
+* `[K]` prompts for PID termination directly inside the terminal with forceful kill capability.
+* `[R]` cycles refresh intervals (0.5s, 1.0s, 2.0s, 5.0s, 10.0s) and persists user preference.
 * `[S]` toggles process sorting (CPU vs RAM).
-* `[F]` toggles process filtering (All vs Heavy).
+* `[F]` toggles process filtering (All vs Heavy) with optimized low-noise thresholds.
 * `[Q]` exits the monitor cleanly.
 
 ---

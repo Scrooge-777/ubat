@@ -13,7 +13,9 @@ param(
     [switch]$AdminOnly
 )
 
-$ScriptDir = Split-Path $PSScriptRoot -Parent
+$PSScriptRoot | Out-Null  # ensure $PSScriptRoot is bound
+# RootDir is the ubat/ project root (parent of optimizer/)
+$RootDir = Split-Path $PSScriptRoot -Parent
 $w = 88
 try {
     if ([Console]::WindowWidth -gt 1) {
@@ -206,6 +208,14 @@ function Invoke-AdminCleanup {
     Write-Host ("=" * $w) -ForegroundColor Cyan
     Write-Host "         ADMIN-LEVEL SYSTEM DEEP CLEANUP & POWER OPTIMIZER" -ForegroundColor Yellow
     Write-Host ("=" * $w) -ForegroundColor Cyan
+    Write-Host " This will permanently delete Windows Temp, SoftwareDistribution\Download," -ForegroundColor Yellow
+    Write-Host " and memory dump files, then apply battery power policy tweaks." -ForegroundColor Yellow
+    Write-Host ""
+    $confirm = Read-Host " Are you sure you want to proceed? [y/N]"
+    if ($confirm -notmatch '^[yY]') {
+        Write-Host " [CANCELLED] Admin cleanup aborted by user." -ForegroundColor DarkGray
+        return
+    }
     Write-Host " Purging Windows system temp, Update distribution cache, and applying power policies..." -ForegroundColor Gray
     Write-Host ""
 
@@ -331,7 +341,12 @@ while ($true) {
             try { [Console]::ReadKey($true) | Out-Null } catch {}
         }
         "4" {
-            & "$ScriptDir\optimizer\PowerOptimizer.ps1"
+            $pOptPath = Join-Path $RootDir "optimizer\PowerOptimizer.ps1"
+            if (Test-Path $pOptPath) {
+                & $pOptPath
+            } else {
+                Write-Host " [ERROR] PowerOptimizer.ps1 not found at: $pOptPath" -ForegroundColor Red
+            }
             Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
             try { [Console]::ReadKey($true) | Out-Null } catch {}
         }

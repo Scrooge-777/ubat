@@ -15,6 +15,47 @@ import tempfile
 import threading
 import subprocess
 import psutil
+import json
+
+# Log and history paths
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_ROOT_DIR = os.path.dirname(_SCRIPT_DIR)
+_LOGS_DIR = os.path.join(_ROOT_DIR, "logs")
+_BENCH_HISTORY_FILE = os.path.join(_LOGS_DIR, "benchmark-history.json")
+
+
+def save_benchmark_result(test_name, result_data):
+    """Auto-appends benchmark/stress test metrics to logs/benchmark-history.json."""
+    if not isinstance(result_data, dict) or result_data.get("status") == "FAIL":
+        return
+    try:
+        os.makedirs(_LOGS_DIR, exist_ok=True)
+        history = []
+        if os.path.exists(_BENCH_HISTORY_FILE):
+            try:
+                with open(_BENCH_HISTORY_FILE, "r", encoding="utf-8") as f:
+                    history = json.load(f)
+                    if not isinstance(history, list):
+                        history = []
+            except Exception:
+                history = []
+
+        saved_data = dict(result_data)
+        saved_data.pop("samples", None)
+
+        entry = {
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "test": test_name,
+            "results": saved_data,
+        }
+        history.append(entry)
+        if len(history) > 100:
+            history = history[-100:]
+
+        with open(_BENCH_HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history, f, indent=2)
+    except Exception:
+        pass
 
 # Safe benchmark constants
 DEFAULT_DISK_BENCH_MB = 128
@@ -232,7 +273,7 @@ def run_cpu_stress_test(duration=10, stop_event=None, progress_cb=None):
     ops_per_sec = int(total_ops / max(1.0, elapsed))
     throttled = peak_temp >= 95.0 or (samples and samples[-1]["freq_mhz"] < base_freq * 0.75)
 
-    return {
+    res = {
         "duration_s": round(elapsed, 1),
         "threads_used": num_threads,
         "base_temp_c": base_temp,
@@ -246,6 +287,8 @@ def run_cpu_stress_test(duration=10, stop_event=None, progress_cb=None):
         "samples": samples,
         "status": "PASS"
     }
+    save_benchmark_result("cpu_stress", res)
+    return res
 
 
 def run_gpu_stress_test(duration=10, stop_event=None, progress_cb=None):
@@ -420,7 +463,7 @@ def run_gpu_stress_test(duration=10, stop_event=None, progress_cb=None):
 
     throttled = peak_temp >= 85.0 or (peak_temp >= 80.0 and len(samples) >= 3 and samples[-1]["clock_mhz"] < peak_clock * 0.70 and samples[-1]["clock_mhz"] > 0)
 
-    return {
+    res = {
         "device_name": dev_name,
         "duration_s": round(elapsed, 1),
         "base_temp_c": base_temp,
@@ -436,6 +479,8 @@ def run_gpu_stress_test(duration=10, stop_event=None, progress_cb=None):
         "samples": samples,
         "status": "PASS"
     }
+    save_benchmark_result("gpu_stress", res)
+    return res
 
 
 def run_ram_stress_test(duration=10, stop_event=None, progress_cb=None):
@@ -542,7 +587,7 @@ def run_ram_stress_test(duration=10, stop_event=None, progress_cb=None):
     tot_churned = sum(churn_bytes)
     churn_rate_gbs = round((tot_churned / (1024 ** 3)) / max(0.1, elapsed), 1)
 
-    return {
+    res = {
         "duration_s": round(elapsed, 1),
         "total_ram_gb": total_gb,
         "base_used_pct": base_used_pct,
@@ -553,6 +598,8 @@ def run_ram_stress_test(duration=10, stop_event=None, progress_cb=None):
         "churn_rate_gbs": churn_rate_gbs,
         "status": "PASS"
     }
+    save_benchmark_result("ram_stress", res)
+    return res
 
 
 def run_system_stress_test(duration=10, stop_event=None, progress_cb=None):
@@ -822,7 +869,7 @@ def run_system_stress_test(duration=10, stop_event=None, progress_cb=None):
     gpu_throttled = gpu_peak_temp >= 85.0
     system_throttled = cpu_throttled or gpu_throttled
 
-    return {
+    res = {
         "duration_s": round(elapsed, 1),
         "cpu_threads": num_threads,
         "cpu_base_temp_c": cpu_base_temp,
@@ -848,6 +895,8 @@ def run_system_stress_test(duration=10, stop_event=None, progress_cb=None):
         "system_throttled": system_throttled,
         "status": "PASS"
     }
+    save_benchmark_result("system_stress", res)
+    return res
 
 
 def run_manual_stress_test(test_type="system", progress_cb=None):
@@ -1075,7 +1124,7 @@ def run_storage_read_benchmark(test_size_mb=DEFAULT_DISK_BENCH_MB, num_random_op
         rnd_speed_mbs = round((num_random_ops * 4096 / (1024 * 1024)) / rnd_duration, 1)
         avg_latency_ms = round((rnd_duration / num_random_ops) * 1000.0, 3)
 
-        return {
+        res = {
             "test_file_size_mb": test_size_mb,
             "seq_read_mbs": seq_speed_mbs,
             "rnd_read_mbs": rnd_speed_mbs,
@@ -1083,6 +1132,8 @@ def run_storage_read_benchmark(test_size_mb=DEFAULT_DISK_BENCH_MB, num_random_op
             "avg_latency_ms": avg_latency_ms,
             "status": "PASS"
         }
+        save_benchmark_result("storage_read", res)
+        return res
     except Exception as e:
         return {
             "error": str(e),
@@ -1123,7 +1174,7 @@ def run_cpu_benchmark(duration_seconds=3):
     multi_score = int(mt_ops_sec / 1500)
     multi_ratio = round(mt_ops_sec / max(1.0, st_ops_sec), 2)
 
-    return {
+    res = {
         "single_thread_ops_sec": st_ops_sec,
         "single_thread_score": single_score,
         "multi_thread_ops_sec": mt_ops_sec,
@@ -1132,6 +1183,8 @@ def run_cpu_benchmark(duration_seconds=3):
         "threads_tested": physical_cores,
         "status": "PASS"
     }
+    save_benchmark_result("cpu_bench", res)
+    return res
 
 
 def run_ram_bandwidth_benchmark(buffer_mb=DEFAULT_RAM_BENCH_MB):
@@ -1158,12 +1211,14 @@ def run_ram_bandwidth_benchmark(buffer_mb=DEFAULT_RAM_BENCH_MB):
         del source
         del dest
 
-        return {
+        res = {
             "buffer_mb": buffer_mb,
             "read_bandwidth_gbs": read_gbs,
             "copy_bandwidth_gbs": copy_gbs,
             "status": "PASS"
         }
+        save_benchmark_result("ram_bandwidth", res)
+        return res
     except Exception as e:
         return {
             "error": str(e),
