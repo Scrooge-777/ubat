@@ -11,6 +11,8 @@ $CoreDir = Join-Path $ScriptDir "core"
 $HwPath = Join-Path $CoreDir "HardwareProfile.ps1"
 $HelpersPath = Join-Path $CoreDir "ConsoleHelpers.ps1"
 
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+
 . $HwPath
 . $HelpersPath
 $hw = Get-HardwareProfile
@@ -33,25 +35,26 @@ function Format-MenuOptionLine {
         [bool]$IsSelected,
         [int]$TermWidth
     )
-    $prefix = if ($IsSelected) { "  > [$($Option.Key)] " } else { "    [$($Option.Key)] " }
+    $bullet = if ($IsSelected) { "●" } else { "○" }
+    $prefix = "│  $bullet [$($Option.Key)] "
     $avail = $TermWidth - $prefix.Length
     if ($avail -le 20) {
         return "$prefix$($Option.Title)"
     }
     if ($avail -lt 55) {
         $title = $Option.Title
-        $rem = $avail - $title.Length - 3
+        $rem = $avail - $title.Length - 4
         if ($rem -gt 8) {
             $desc = if ($Option.Desc.Length -gt $rem) { $Option.Desc.Substring(0, $rem - 3) + "..." } else { $Option.Desc }
-            return "$prefix$title - $desc"
+            return "$prefix$title ─ $desc"
         } else {
             return "$prefix$title"
         }
     } else {
-        $pad = [math]::Min(28, [math]::Max(18, [int]($avail * 0.32)))
-        $rem = $avail - $pad - 3
+        $pad = [math]::Min(32, [math]::Max(22, [int]($avail * 0.35)))
+        $rem = $avail - $pad - 4
         $desc = if ($Option.Desc.Length -gt $rem) { $Option.Desc.Substring(0, [math]::Max(0, $rem - 3)) + "..." } else { $Option.Desc }
-        return "$prefix$($Option.Title.PadRight($pad)) - $desc"
+        return "$prefix$($Option.Title.PadRight($pad)) ─ $desc"
     }
 }
 
@@ -88,28 +91,28 @@ function Show-SubMenu {
             }
 
             Reset-Cursor
-            Write-LineClean ("=" * $termWidth) Cyan
-            $spaces = [math]::Max(0, [math]::Floor(($termWidth - $HubTitle.Length) / 2))
-            $bannerText = if ($HubTitle.Length -gt $termWidth) { $HubTitle.Substring(0, $termWidth) } else { (" " * $spaces) + $HubTitle }
-            Write-LineClean $bannerText Yellow
-            Write-LineClean ("=" * $termWidth) Cyan
-            Write-LineClean " Choose a sub-module to execute:" White
-            Write-LineClean " (Use [Up / Down] Arrow Keys to navigate, [Enter] to select, or tap [0-9])" DarkGray
-            Write-LineClean "" White
+            Write-LineClean "┌   $HubTitle" Cyan
+            Write-LineClean "│" DarkGray
+            Write-LineClean "◇  Choose a sub-module to execute:" White
+            Write-LineClean "│" DarkGray
 
             for ($i = 0; $i -lt $Options.Count; $i++) {
                 $opt = $Options[$i]
                 $line = Format-MenuOptionLine -Option $opt -IsSelected ($i -eq $subIndex) -TermWidth $termWidth
                 if ($i -eq $subIndex) {
-                    Write-LineClean $line Green
+                    Write-LineClean $line Cyan
                 } else {
-                    Write-LineClean $line Gray
+                    Write-LineClean $line DarkGray
                 }
             }
 
-            Write-LineClean "" White
-            Write-LineClean ("-" * $termWidth) Cyan
-            Write-LineClean " Controls: [Up / Down] Navigate  |  [Enter] Select  |  [0 / Esc] Return" DarkGray
+            Write-LineClean "│" DarkGray
+            $barLen = [math]::Max(2, $termWidth - 28)
+            Write-LineClean ("◇  Navigation Controls " + ("─" * $barLen) + "╮") DarkGray
+            Write-LineClean "│  [↑/↓] Navigate  │  [Enter] Select  │  [0 / Esc] Return   │" DarkGray
+            Write-LineClean ("├" + ("─" * [math]::Max(2, $termWidth - 4)) + "╯") DarkGray
+            Write-LineClean "│" DarkGray
+            Write-LineClean "└  Ready." DarkGray
             try { [Console]::Write("`e[J") } catch {}
 
             try {
@@ -209,31 +212,30 @@ while ($true) {
         }
 
         Reset-Cursor
-        $spaces = [math]::Max(0, [math]::Floor(($termWidth - $bannerTitle.Length) / 2))
-        $centeredBanner = if ($bannerTitle.Length -gt $termWidth) { $bannerTitle.Substring(0, $termWidth) } else { (" " * $spaces) + $bannerTitle }
-
-        Write-LineClean ("=" * $termWidth) Cyan
-        Write-LineClean $centeredBanner Yellow
-        Write-LineClean ("=" * $termWidth) Cyan
-        Write-LineClean " Hardware: $($hw.Manufacturer) $($hw.Model)  |  CPU: $($hw.CpuName)" Gray
-        Write-LineClean "" White
-        Write-LineClean " Choose a hardware subsystem to inspect:" White
-        Write-LineClean " (Use [Up / Down] Arrow Keys to navigate, [Enter] to select, or tap [0-7])" DarkGray
-        Write-LineClean "" White
+        Write-LineClean "┌   $bannerTitle" Cyan
+        Write-LineClean "│" DarkGray
+        Write-LineClean "◇  Platform: $($hw.Manufacturer) $($hw.Model)  |  CPU: $($hw.CpuName)" DarkGray
+        Write-LineClean "│" DarkGray
+        Write-LineClean "◇  Choose a hardware subsystem or hub:" White
+        Write-LineClean "│" DarkGray
 
         for ($i = 0; $i -lt $mainOptions.Count; $i++) {
             $opt = $mainOptions[$i]
             $line = Format-MenuOptionLine -Option $opt -IsSelected ($i -eq $selectedIndex) -TermWidth $termWidth
             if ($i -eq $selectedIndex) {
-                Write-LineClean $line Green
+                Write-LineClean $line Cyan
             } else {
-                Write-LineClean $line Gray
+                Write-LineClean $line DarkGray
             }
         }
 
-        Write-LineClean "" White
-        Write-LineClean ("-" * $termWidth) Cyan
-        Write-LineClean " Controls: [Up / Down] Move Selection  |  [Enter / Space] Select  |  [0-7] Quick Jump  |  [Q] Exit" DarkGray
+        Write-LineClean "│" DarkGray
+        $barLen = [math]::Max(2, $termWidth - 28)
+        Write-LineClean ("◇  Navigation Controls " + ("─" * $barLen) + "╮") DarkGray
+        Write-LineClean "│  [↑/↓] Navigate  │  [Enter/Space] Select  │  [0-7] Jump  │  [Q] Exit  │" DarkGray
+        Write-LineClean ("├" + ("─" * [math]::Max(2, $termWidth - 4)) + "╯") DarkGray
+        Write-LineClean "│" DarkGray
+        Write-LineClean "└  Ready. Press a key to execute." DarkGray
         try { [Console]::Write("`e[J") } catch {}
 
         try {

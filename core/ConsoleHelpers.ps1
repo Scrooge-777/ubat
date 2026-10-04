@@ -71,3 +71,65 @@ function Write-Centered {
 Set-Alias -Name Hide-ConsoleCursor   -Value Hide-Cursor   -Scope Global -Force
 Set-Alias -Name Show-ConsoleCursor   -Value Show-Cursor   -Scope Global -Force
 Set-Alias -Name Reset-ConsoleCursor  -Value Reset-Cursor  -Scope Global -Force
+
+# -- Modern Clack / Vercel-style UI Rendering Utilities --------------------
+function Write-ClackStart {
+    param([string]$Title = "")
+    Write-Host "┌   $Title" -ForegroundColor Cyan
+    Write-Host "│" -ForegroundColor DarkGray
+}
+
+function Write-ClackStep {
+    param([string]$Message, [ConsoleColor]$Color = [ConsoleColor]::White)
+    Write-Host "◇  " -NoNewline -ForegroundColor Cyan
+    Write-Host $Message -ForegroundColor $Color
+    Write-Host "│" -ForegroundColor DarkGray
+}
+
+function Write-ClackSuccess {
+    param([string]$Message)
+    Write-Host "✓  " -NoNewline -ForegroundColor Green
+    Write-Host $Message -ForegroundColor White
+    Write-Host "│" -ForegroundColor DarkGray
+}
+
+function Write-ClackCard {
+    param(
+        [string]$Title,
+        [array]$Lines,
+        [int]$Width = 54
+    )
+    $pad = [math]::Max(2, ($Width - $Title.Length - 4))
+    Write-Host "◇  " -NoNewline -ForegroundColor Cyan
+    Write-Host "$Title " -NoNewline -ForegroundColor White
+    Write-Host ("─" * $pad) -NoNewline -ForegroundColor DarkGray
+    Write-Host "╮" -ForegroundColor DarkGray
+
+    Write-Host "│  " -NoNewline -ForegroundColor DarkGray
+    Write-Host (" " * ($Width - 1)) -NoNewline
+    Write-Host "│" -ForegroundColor DarkGray
+
+    foreach ($l in $Lines) {
+        $clean = $l -replace '\x1b\[[0-9;]*m', ''
+        $spaces = [math]::Max(0, ($Width - $clean.Length - 1))
+        Write-Host "│  $l" -NoNewline
+        Write-Host (" " * $spaces) -NoNewline
+        Write-Host "│" -ForegroundColor DarkGray
+    }
+
+    Write-Host "│  " -NoNewline -ForegroundColor DarkGray
+    Write-Host (" " * ($Width - 1)) -NoNewline
+    Write-Host "│" -ForegroundColor DarkGray
+
+    Write-Host "├" -NoNewline -ForegroundColor DarkGray
+    Write-Host ("─" * ($Width + 1)) -NoNewline -ForegroundColor DarkGray
+    Write-Host "╯" -ForegroundColor DarkGray
+    Write-Host "│" -ForegroundColor DarkGray
+}
+
+function Write-ClackEnd {
+    param([string]$Message = "Done!")
+    Write-Host "└  " -NoNewline -ForegroundColor DarkGray
+    Write-Host $Message -ForegroundColor Green
+    Write-Host ""
+}
