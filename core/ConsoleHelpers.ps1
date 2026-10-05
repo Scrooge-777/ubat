@@ -17,8 +17,12 @@ $global:G_TOP     = [string][char]0x250C  # ┌
 $global:G_BOT     = [string][char]0x2514  # └
 $global:G_TEE     = [string][char]0x251C  # ├
 $global:G_BAR     = [string][char]0x2500  # ─
+$global:G_TL      = [string][char]0x256D  # ╭
 $global:G_TR      = [string][char]0x256E  # ╮
+$global:G_BL      = [string][char]0x2570  # ╰
 $global:G_BR      = [string][char]0x256F  # ╯
+$global:G_LT      = [string][char]0x251C  # ├
+$global:G_RT      = [string][char]0x2524  # ┤
 $global:G_DIAMOND = [string][char]0x25C7  # ◇
 $global:G_ACTIVE  = [string][char]0x25CF  # ●
 $global:G_IDLE    = [string][char]0x25CB  # ○
@@ -155,39 +159,42 @@ function Format-MenuOptionLine {
     param(
         [object]$Option,
         [bool]$IsSelected,
-        [int]$TermWidth
+        [int]$TermWidth = 88
     )
     $bullet = if ($IsSelected) { $global:G_ACTIVE } else { $global:G_IDLE }
-    $prefix = "$($global:G_RAIL)  $bullet  "
-    $avail = $TermWidth - $prefix.Length
-    if ($avail -le 24) {
-        return "$prefix$($Option.Title)"
-    }
-    if ($avail -lt 60) {
-        $title = $Option.Title
-        $rem = $avail - $title.Length - 4
-        if ($rem -gt 8) {
-            $desc = if ($Option.Desc.Length -gt $rem) { $Option.Desc.Substring(0, $rem - 3) + "..." } else { $Option.Desc }
-            return "$prefix$title $($global:G_BAR) $desc"
-        } else {
-            return "$prefix$title"
-        }
+    $boxWidth = [math]::Min(102, [math]::Max(46, $TermWidth - 4))
+    $innerWidth = $boxWidth - 2
+    $colTitleWidth = [math]::Min([int]($innerWidth * 0.44), 36)
+    $rawTitle = $Option.Title
+    $titlePadded = if ($rawTitle.Length -gt $colTitleWidth) {
+        $rawTitle.Substring(0, $colTitleWidth - 3) + "... "
     } else {
-        $pad = [math]::Min(36, [math]::Max(24, [int]($avail * 0.36)))
-        $rem = $avail - $pad - 4
-        $desc = if ($Option.Desc.Length -gt $rem) { $Option.Desc.Substring(0, [math]::Max(0, $rem - 3)) + "..." } else { $Option.Desc }
-        return "$prefix$($Option.Title.PadRight($pad)) $($global:G_BAR) $desc"
+        $rawTitle.PadRight($colTitleWidth)
     }
+    $availDesc = [math]::Max(0, $innerWidth - 5 - $colTitleWidth - 3 - 2)
+    $rawDesc = if ($Option.Desc) { [string]$Option.Desc } else { "" }
+    $desc = if ($rawDesc.Length -gt $availDesc) {
+        if ($availDesc -gt 3) { $rawDesc.Substring(0, $availDesc - 3) + "..." } else { "" }
+    } else {
+        $rawDesc
+    }
+    $sepStr = if ($availDesc -ge 6 -and $desc.Length -gt 0) { " ─ " } else { "   " }
+    $innerRow = "  $bullet  $titlePadded$sepStr$desc"
+    $trailSpaces = [math]::Max(0, $innerWidth - $innerRow.Length)
+    return "$global:G_RAIL$innerRow" + (" " * $trailSpaces) + "$global:G_RAIL"
 }
 
 function Show-SubMenu {
     param(
         [string]$HubTitle,
         [array]$Options,
-        [string]$PromptText = "Choose an operation to execute:"
+        [string]$PromptText = "Choose an operation to execute:",
+        [string]$Subtitle = "",
+        [int]$DefaultIndex = 0
     )
 
-    $subIndex = 0
+    $subIndex = $DefaultIndex
+    if ($subIndex -lt 0 -or $subIndex -ge $Options.Count) { $subIndex = 0 }
     $lastWidth = 0
     $lastHeight = 0
 
@@ -214,34 +221,126 @@ function Show-SubMenu {
             }
 
             Reset-Cursor
-            Write-LineClean "$($global:G_TOP)   $HubTitle" Cyan
-            Write-LineClean "$($global:G_RAIL)" DarkGray
-            Write-LineClean "$($global:G_DIAMOND)  $PromptText" White
-            Write-LineClean "$($global:G_RAIL)" DarkGray
+
+            # Card Container Dimensions
+            $boxWidth = [math]::Min(102, [math]::Max(46, $termWidth - 4))
+            $innerWidth = $boxWidth - 2
+
+            # 1. Header with Title Badge
+            $maxTitleChars = [math]::Max(4, $boxWidth - 12)
+            $cleanTitle = if ($HubTitle.Length -gt $maxTitleChars) { $HubTitle.Substring(0, $maxTitleChars - 3) + "..." } else { $HubTitle }
+            $titleBadge = " [ $cleanTitle ] "
+            $dashesNeeded = [math]::Max(1, $boxWidth - 4 - $titleBadge.Length)
+            $topLine = "$global:G_TL$global:G_BAR$global:G_BAR$titleBadge" + ($global:G_BAR * $dashesNeeded) + "$global:G_TR"
+            if ($topLine.Length -gt $boxWidth) { $topLine = $topLine.Substring(0, $boxWidth - 1) + $global:G_TR }
+            Write-Host "$topLine`e[K" -ForegroundColor Cyan
+
+            # 2. Blank Spacer
+            Write-Host ("$global:G_RAIL" + (" " * $innerWidth) + "$global:G_RAIL`e[K") -ForegroundColor DarkGray
+
+            # 3. Optional Subtitle (e.g. Platform / CPU metadata)
+            if ($Subtitle) {
+                $subClean = if ($Subtitle.Length -gt ($innerWidth - 6)) { $Subtitle.Substring(0, $innerWidth - 9) + "..." } else { $Subtitle }
+                $subPad = [math]::Max(0, $innerWidth - 5 - $subClean.Length)
+                Write-Host "$global:G_RAIL  " -NoNewline -ForegroundColor DarkGray
+                Write-Host "$global:G_DIAMOND  " -NoNewline -ForegroundColor Cyan
+                Write-Host $subClean -NoNewline -ForegroundColor DarkGray
+                Write-Host (" " * $subPad) -NoNewline
+                Write-Host "$global:G_RAIL`e[K" -ForegroundColor DarkGray
+            }
+
+            # 4. Prompt Text
+            $promptClean = if ($PromptText.Length -gt ($innerWidth - 6)) { $PromptText.Substring(0, $innerWidth - 9) + "..." } else { $PromptText }
+            $promptPad = [math]::Max(0, $innerWidth - 5 - $promptClean.Length)
+            Write-Host "$global:G_RAIL  " -NoNewline -ForegroundColor DarkGray
+            Write-Host "$global:G_DIAMOND  " -NoNewline -ForegroundColor Cyan
+            Write-Host $promptClean -NoNewline -ForegroundColor White
+            Write-Host (" " * $promptPad) -NoNewline
+            Write-Host "$global:G_RAIL`e[K" -ForegroundColor DarkGray
+
+            # 5. Blank Spacer
+            Write-Host ("$global:G_RAIL" + (" " * $innerWidth) + "$global:G_RAIL`e[K") -ForegroundColor DarkGray
+
+            # 6. Options with Aligned Columns
+            $maxT = 0
+            foreach ($o in $Options) { if ($o.Title.Length -gt $maxT) { $maxT = $o.Title.Length } }
+            $maxColAllowed = [math]::Max(20, [int]($innerWidth * 0.48))
+            $colTitleWidth = [math]::Min($maxColAllowed, [math]::Max(20, $maxT))
 
             for ($i = 0; $i -lt $Options.Count; $i++) {
                 $opt = $Options[$i]
-                $line = Format-MenuOptionLine -Option $opt -IsSelected ($i -eq $subIndex) -TermWidth $termWidth
-                if ($i -eq $subIndex) {
-                    Write-LineClean $line Cyan
+                $isSel = ($i -eq $subIndex)
+                $bullet = if ($isSel) { $global:G_ACTIVE } else { $global:G_IDLE }
+                $rawTitle = $opt.Title
+                $titlePadded = if ($rawTitle.Length -gt $colTitleWidth) {
+                    $rawTitle.Substring(0, $colTitleWidth - 3) + "..."
                 } else {
-                    Write-LineClean $line DarkGray
+                    $rawTitle.PadRight($colTitleWidth)
+                }
+
+                $availDesc = [math]::Max(0, $innerWidth - 5 - $colTitleWidth - 3 - 2)
+                $rawDesc = if ($opt.Desc) { [string]$opt.Desc } else { "" }
+                $desc = if ($rawDesc.Length -gt $availDesc) {
+                    if ($availDesc -gt 3) { $rawDesc.Substring(0, $availDesc - 3) + "..." } else { "" }
+                } else {
+                    $rawDesc
+                }
+
+                $sepStr = if ($availDesc -ge 6 -and $desc.Length -gt 0) { " ─ " } else { "   " }
+                $innerRow = "  $bullet  $titlePadded$sepStr$desc"
+                $trailSpaces = [math]::Max(0, $innerWidth - $innerRow.Length)
+
+                if ($isSel) {
+                    Write-Host "$global:G_RAIL" -NoNewline -ForegroundColor Cyan
+                    Write-Host "  $bullet  " -NoNewline -ForegroundColor Cyan
+                    Write-Host "$titlePadded" -NoNewline -ForegroundColor White
+                    Write-Host "$sepStr" -NoNewline -ForegroundColor Cyan
+                    Write-Host "$desc" -NoNewline -ForegroundColor Cyan
+                    Write-Host (" " * $trailSpaces) -NoNewline
+                    Write-Host "$global:G_RAIL`e[K" -ForegroundColor Cyan
+                } else {
+                    Write-Host "$global:G_RAIL" -NoNewline -ForegroundColor DarkGray
+                    Write-Host "  $bullet  " -NoNewline -ForegroundColor DarkGray
+                    Write-Host "$titlePadded" -NoNewline -ForegroundColor Gray
+                    Write-Host "$sepStr" -NoNewline -ForegroundColor DarkGray
+                    Write-Host "$desc" -NoNewline -ForegroundColor DarkGray
+                    Write-Host (" " * $trailSpaces) -NoNewline
+                    Write-Host "$global:G_RAIL`e[K" -ForegroundColor DarkGray
                 }
             }
 
-            Write-LineClean "$($global:G_RAIL)" DarkGray
-            $cardWidth = [math]::Min(58, [math]::Max(42, $termWidth - 6))
-            $padLen = [math]::Max(2, ($cardWidth - 14))
-            Write-LineClean ("$($global:G_DIAMOND)  Controls " + ($global:G_BAR * $padLen) + $global:G_TR) DarkGray
-            Write-LineClean ("$($global:G_RAIL)" + (" " * ($cardWidth + 1)) + "$($global:G_RAIL)") DarkGray
+            # 7. Blank Spacer
+            Write-Host ("$global:G_RAIL" + (" " * $innerWidth) + "$global:G_RAIL`e[K") -ForegroundColor DarkGray
+
+            # 8. Divider Line
+            $divLine = "$global:G_LT" + ($global:G_BAR * $innerWidth) + "$global:G_RT"
+            Write-Host "$divLine`e[K" -ForegroundColor DarkGray
+
+            # 9. Controls Footer
             $arrowNav = "$([char]0x2191)/$([char]0x2193)"
-            $contentStr = "  [$arrowNav] Navigate   [Enter] Select   [Esc/Q] Back"
-            $contentPad = [math]::Max(1, ($cardWidth - $contentStr.Length + 1))
-            Write-LineClean ("$($global:G_RAIL)" + $contentStr + (" " * $contentPad) + "$($global:G_RAIL)") DarkGray
-            Write-LineClean ("$($global:G_RAIL)" + (" " * ($cardWidth + 1)) + "$($global:G_RAIL)") DarkGray
-            Write-LineClean ("$($global:G_TEE)" + ($global:G_BAR * ($cardWidth + 1)) + $global:G_BR) DarkGray
-            Write-LineClean "$($global:G_RAIL)" DarkGray
-            Write-LineClean "$($global:G_BOT)  Ready. Use arrow keys to navigate." DarkGray
+            $actionLabel = if ($HubTitle -match "MAIN|TELEMETRY") { "Exit" } else { "Back" }
+            $ctrlVisual = "  [$arrowNav] Navigate    [Enter] Select    [Esc/Q] $actionLabel"
+            if ($ctrlVisual.Length -gt $innerWidth) {
+                $ctrlVisual = "  [$arrowNav] Nav  [Enter] Select  [Esc] $actionLabel"
+            }
+            $ctrlPad = [math]::Max(0, $innerWidth - $ctrlVisual.Length)
+            Write-Host "$global:G_RAIL  " -NoNewline -ForegroundColor DarkGray
+            Write-Host "[$arrowNav] " -NoNewline -ForegroundColor White
+            Write-Host "Navigate    " -NoNewline -ForegroundColor DarkGray
+            Write-Host "[Enter] " -NoNewline -ForegroundColor White
+            Write-Host "Select    " -NoNewline -ForegroundColor DarkGray
+            Write-Host "[Esc/Q] " -NoNewline -ForegroundColor White
+            Write-Host $actionLabel -NoNewline -ForegroundColor DarkGray
+            Write-Host (" " * $ctrlPad) -NoNewline
+            Write-Host "$global:G_RAIL`e[K" -ForegroundColor DarkGray
+
+            # 10. Footer with Ready Badge
+            $footerBadge = " [ Ready ] "
+            $botDashes = [math]::Max(1, $boxWidth - 4 - $footerBadge.Length)
+            $botLine = "$global:G_BL$global:G_BAR$global:G_BAR$footerBadge" + ($global:G_BAR * $botDashes) + "$global:G_BR"
+            if ($botLine.Length -gt $boxWidth) { $botLine = $botLine.Substring(0, $boxWidth - 1) + $global:G_BR }
+            Write-Host "$botLine`e[K" -ForegroundColor Cyan
+
             try { [Console]::Write("`e[J") } catch {}
 
             try {
@@ -271,6 +370,12 @@ function Show-SubMenu {
                 'DownArrow' {
                     $subIndex++
                     if ($subIndex -ge $Options.Count) { $subIndex = 0 }
+                }
+                'Home' {
+                    $subIndex = 0
+                }
+                'End' {
+                    $subIndex = $Options.Count - 1
                 }
                 'Enter' {
                     $chosenSubKey = $Options[$subIndex].Key

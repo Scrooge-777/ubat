@@ -624,7 +624,7 @@ def run_ssd_trim_optimizer(live):
 
 def select_menu_option(hub_title, prompt_text, options, default_index=0):
     """
-    Renders an interactive @clack/prompts menu in Python TUI.
+    Renders an interactive enclosed container card menu in Python TUI.
     Navigated via Up/Down arrow keys, Enter or Space to select, Esc or Q to cancel.
     No number options displayed.
     """
@@ -633,44 +633,70 @@ def select_menu_option(hub_title, prompt_text, options, default_index=0):
 
     while True:
         term_width = console.width or 88
-        card_width = min(62, max(46, term_width - 6))
-        pad_len = max(2, card_width - 14)
+        box_width = min(102, max(46, term_width - 4))
+        inner_width = box_width - 2
+
+        # 1. Header with Title Badge
+        max_title_chars = max(4, box_width - 12)
+        clean_title = (hub_title[:max_title_chars - 3] + "...") if len(hub_title) > max_title_chars else hub_title
+        title_badge = f" [ {clean_title} ] "
+        dashes_needed = max(1, box_width - 4 - len(title_badge))
+        top_line = f"╭──{title_badge}" + ("─" * dashes_needed) + "╮"
+        if len(top_line) > box_width:
+            top_line = top_line[:box_width - 1] + "╮"
 
         buf = []
-        buf.append(f"[bold cyan]┌   {hub_title}[/bold cyan]")
-        buf.append("[dim]│[/dim]")
-        buf.append(f"[bold cyan]◇[/bold cyan]  [bold white]{prompt_text}[/bold white]")
-        buf.append("[dim]│[/dim]")
+        buf.append(f"[bold cyan]{top_line}[/bold cyan]")
+        buf.append(f"[dim]│{' ' * inner_width}│[/dim]")
+
+        # 2. Prompt Text
+        prompt_clean = (prompt_text[:inner_width - 9] + "...") if len(prompt_text) > (inner_width - 6) else prompt_text
+        prompt_pad = max(0, inner_width - 5 - len(prompt_clean))
+        buf.append(f"[dim]│[/dim]  [bold cyan]◇[/bold cyan]  [bold white]{prompt_clean}[/bold white]{' ' * prompt_pad}[dim]│[/dim]")
+        buf.append(f"[dim]│{' ' * inner_width}│[/dim]")
+
+        # 3. Options with Aligned Columns
+        max_t = max(len(opt["title"]) for opt in options) if options else 20
+        max_col_allowed = max(20, int(inner_width * 0.48))
+        col_title_width = min(max_col_allowed, max(20, max_t))
 
         for i, opt in enumerate(options):
             bullet = "●" if i == selected_idx else "○"
-            title = opt["title"]
-            desc = opt.get("desc", "")
-            prefix = f"│  {bullet}  "
-            avail = term_width - len(prefix)
-            if avail <= 24 or not desc:
-                line_str = f"{prefix}{title}"
-            else:
-                pad = min(36, max(24, int(avail * 0.36)))
-                rem = avail - pad - 4
-                trimmed_desc = (desc[:rem - 3] + "...") if len(desc) > rem else desc
-                line_str = f"{prefix}{title.ljust(pad)} ─ {trimmed_desc}"
+            raw_title = opt["title"]
+            title_padded = (raw_title[:col_title_width - 3] + "...") if len(raw_title) > col_title_width else raw_title.ljust(col_title_width)
+
+            avail_desc = max(0, inner_width - 5 - col_title_width - 3 - 2)
+            raw_desc = str(opt.get("desc", ""))
+            desc = (raw_desc[:avail_desc - 3] + "...") if len(raw_desc) > avail_desc else raw_desc
+            sep_str = " ─ " if (avail_desc >= 6 and len(desc) > 0) else "   "
+
+            inner_row = f"  {bullet}  {title_padded}{sep_str}{desc}"
+            trail_spaces = max(0, inner_width - len(inner_row))
 
             if i == selected_idx:
-                buf.append(f"[bold cyan]{line_str}[/bold cyan]")
+                buf.append(f"[bold cyan]│[/bold cyan]  [bold cyan]{bullet}[/bold cyan]  [bold white]{title_padded}[/bold white][bold cyan]{sep_str}[/bold cyan][bold cyan]{desc}[/bold cyan]{' ' * trail_spaces}[bold cyan]│[/bold cyan]")
             else:
-                buf.append(f"[dim]{line_str}[/dim]")
+                buf.append(f"[dim]│  {bullet}  {title_padded}{sep_str}{desc}{' ' * trail_spaces}│[/dim]")
 
-        buf.append("[dim]│[/dim]")
-        buf.append(f"[dim]◇  Controls {'─' * pad_len}╮[/dim]")
-        buf.append(f"[dim]│{' ' * (card_width + 1)}│[/dim]")
-        arrow_str = "  [↑/↓] Navigate   [Enter] Select   [Esc/Q] Back"
-        arrow_pad = max(1, card_width - len(arrow_str) + 1)
-        buf.append(f"[dim]│{arrow_str}{' ' * arrow_pad}│[/dim]")
-        buf.append(f"[dim]│{' ' * (card_width + 1)}│[/dim]")
-        buf.append(f"[dim]├{'─' * (card_width + 1)}╯[/dim]")
-        buf.append("[dim]│[/dim]")
-        buf.append("[dim]└  Ready. Use arrow keys to navigate.[/dim]")
+        # 4. Divider
+        buf.append(f"[dim]│{' ' * inner_width}│[/dim]")
+        buf.append(f"[dim]├{'─' * inner_width}┤[/dim]")
+
+        # 5. Controls Footer
+        action_label = "Exit" if ("MAIN" in hub_title or "TELEMETRY" in hub_title) else "Back"
+        ctrl_visual = f"  [↑/↓] Navigate    [Enter] Select    [Esc/Q] {action_label}"
+        if len(ctrl_visual) > inner_width:
+            ctrl_visual = f"  [↑/↓] Nav  [Enter] Select  [Esc] {action_label}"
+        ctrl_pad = max(0, inner_width - len(ctrl_visual))
+        buf.append(f"[dim]│[/dim]  [bold white][↑/↓][/bold white] [dim]Navigate    [/dim][bold white][Enter][/bold white] [dim]Select    [/dim][bold white][Esc/Q][/bold white] [dim]{action_label}[/dim]{' ' * ctrl_pad}[dim]│[/dim]")
+
+        # 6. Footer
+        footer_badge = " [ Ready ] "
+        bot_dashes = max(1, box_width - 4 - len(footer_badge))
+        bot_line = f"╰──{footer_badge}" + ("─" * bot_dashes) + "╯"
+        if len(bot_line) > box_width:
+            bot_line = bot_line[:box_width - 1] + "╯"
+        buf.append(f"[bold cyan]{bot_line}[/bold cyan]")
 
         sys.stdout.write("\x1b[H")
         console.print("\n".join(buf))
@@ -684,6 +710,10 @@ def select_menu_option(hub_title, prompt_text, options, default_index=0):
                 selected_idx = (selected_idx - 1) % num_opts
             elif arrow == b'P':  # Down arrow
                 selected_idx = (selected_idx + 1) % num_opts
+            elif arrow == b'G':  # Home
+                selected_idx = 0
+            elif arrow == b'O':  # End
+                selected_idx = num_opts - 1
         elif ch in (b'\r', b' '):  # Enter or Space
             console.clear()
             return options[selected_idx]["key"]

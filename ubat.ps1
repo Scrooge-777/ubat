@@ -44,152 +44,7 @@ $global:G_ACTIVE  = [string][char]0x25CF  # ●
 $global:G_IDLE    = [string][char]0x25CB  # ○
 $global:G_CHECK   = [string][char]0x2713  # ✓
 
-# Console helper functions are provided by core\ConsoleHelpers.ps1 (dot-sourced above)
-
-function Format-MenuOptionLine {
-    param(
-        [object]$Option,
-        [bool]$IsSelected,
-        [int]$TermWidth
-    )
-    $bullet = if ($IsSelected) { $global:G_ACTIVE } else { $global:G_IDLE }
-    $prefix = "$($global:G_RAIL)  $bullet  "
-    $avail = $TermWidth - $prefix.Length
-    if ($avail -le 24) {
-        return "$prefix$($Option.Title)"
-    }
-    if ($avail -lt 60) {
-        $title = $Option.Title
-        $rem = $avail - $title.Length - 4
-        if ($rem -gt 8) {
-            $desc = if ($Option.Desc.Length -gt $rem) { $Option.Desc.Substring(0, $rem - 3) + "..." } else { $Option.Desc }
-            return "$prefix$title $($global:G_BAR) $desc"
-        } else {
-            return "$prefix$title"
-        }
-    } else {
-        $pad = [math]::Min(34, [math]::Max(24, [int]($avail * 0.36)))
-        $rem = $avail - $pad - 4
-        $desc = if ($Option.Desc.Length -gt $rem) { $Option.Desc.Substring(0, [math]::Max(0, $rem - 3)) + "..." } else { $Option.Desc }
-        return "$prefix$($Option.Title.PadRight($pad)) $($global:G_BAR) $desc"
-    }
-}
-
-function Show-SubMenu {
-    param(
-        [string]$HubTitle,
-        [array]$Options
-    )
-
-    $subIndex = 0
-    $lastWidth = 0
-    $lastHeight = 0
-
-    while ($true) {
-        Hide-Cursor
-        $termWidth = Get-Width
-        $termHeight = try { [Console]::WindowHeight } catch { 25 }
-        $lastWidth = $termWidth
-        $lastHeight = $termHeight
-        try { Clear-Host } catch {}
-
-        $exitSub = $false
-        $chosenSubKey = $null
-
-        while (-not $exitSub) {
-            $curW = Get-Width
-            $curH = try { [Console]::WindowHeight } catch { 25 }
-            if ($curW -ne $lastWidth -or $curH -ne $lastHeight) {
-                $termWidth = $curW
-                $termHeight = $curH
-                $lastWidth = $curW
-                $lastHeight = $curH
-                try { Clear-Host } catch {}
-            }
-
-            Reset-Cursor
-            Write-LineClean "$($global:G_TOP)   $HubTitle" Cyan
-            Write-LineClean "$($global:G_RAIL)" DarkGray
-            Write-LineClean "$($global:G_DIAMOND)  Choose an operation to execute:" White
-            Write-LineClean "$($global:G_RAIL)" DarkGray
-
-            for ($i = 0; $i -lt $Options.Count; $i++) {
-                $opt = $Options[$i]
-                $line = Format-MenuOptionLine -Option $opt -IsSelected ($i -eq $subIndex) -TermWidth $termWidth
-                if ($i -eq $subIndex) {
-                    Write-LineClean $line Cyan
-                } else {
-                    Write-LineClean $line DarkGray
-                }
-            }
-
-            Write-LineClean "$($global:G_RAIL)" DarkGray
-            $cardWidth = [math]::Min(56, [math]::Max(42, $termWidth - 6))
-            $padLen = [math]::Max(2, ($cardWidth - 14))
-            Write-LineClean ("$($global:G_DIAMOND)  Controls " + ($global:G_BAR * $padLen) + $global:G_TR) DarkGray
-            Write-LineClean ("$($global:G_RAIL)" + (" " * ($cardWidth + 1)) + "$($global:G_RAIL)") DarkGray
-            $arrowNav = "$([char]0x2191)/$([char]0x2193)"
-            $contentStr = "  [$arrowNav] Navigate   [Enter] Select   [Esc/Q] Back"
-            $contentPad = [math]::Max(1, ($cardWidth - $contentStr.Length + 1))
-            Write-LineClean ("$($global:G_RAIL)" + $contentStr + (" " * $contentPad) + "$($global:G_RAIL)") DarkGray
-            Write-LineClean ("$($global:G_RAIL)" + (" " * ($cardWidth + 1)) + "$($global:G_RAIL)") DarkGray
-            Write-LineClean ("$($global:G_TEE)" + ($global:G_BAR * ($cardWidth + 1)) + $global:G_BR) DarkGray
-            Write-LineClean "$($global:G_RAIL)" DarkGray
-            Write-LineClean "$($global:G_BOT)  Ready. Use arrow keys to navigate." DarkGray
-            try { [Console]::Write("`e[J") } catch {}
-
-            try {
-                if ([Console]::IsInputRedirected) { return $null }
-            } catch { return $null }
-
-            # Live responsive polling (detects zoom in / zoom out while sitting on menu)
-            while (-not [Console]::KeyAvailable) {
-                $checkW = Get-Width
-                $checkH = try { [Console]::WindowHeight } catch { 25 }
-                if ($checkW -ne $lastWidth -or $checkH -ne $lastHeight) {
-                    break
-                }
-                Start-Sleep -Milliseconds 50
-            }
-
-            if (-not [Console]::KeyAvailable) {
-                continue
-            }
-
-            $kInfo = [Console]::ReadKey($true)
-            switch ($kInfo.Key) {
-                'UpArrow' {
-                    $subIndex--
-                    if ($subIndex -lt 0) { $subIndex = $Options.Count - 1 }
-                }
-                'DownArrow' {
-                    $subIndex++
-                    if ($subIndex -ge $Options.Count) { $subIndex = 0 }
-                }
-                'Enter' {
-                    $chosenSubKey = $Options[$subIndex].Key
-                    $exitSub = $true
-                }
-                'Spacebar' {
-                    $chosenSubKey = $Options[$subIndex].Key
-                    $exitSub = $true
-                }
-                'Escape' {
-                    return "0"
-                }
-                Default {
-                    $ch = $kInfo.KeyChar
-                    if ($ch -eq '0' -or $ch -eq 'q' -or $ch -eq 'Q') {
-                        return "0"
-                    }
-                }
-            }
-        }
-
-        Show-Cursor
-        return $chosenSubKey
-    }
-}
+# Console helper utilities and modern menu engine provided by core\ConsoleHelpers.ps1
 
 function Get-StressDuration {
     param([string]$StressName)
@@ -217,119 +72,23 @@ $mainOptions = @(
 )
 
 $selectedIndex = 0
-$lastMenuWidth = 0
-$lastMenuHeight = 0
+$bannerSubtitle = "Platform: $($hw.Manufacturer) $($hw.Model)  •  CPU: $($hw.CpuName)"
 
 while ($true) {
-    Hide-Cursor
-    $termWidth = Get-Width
-    $termHeight = try { [Console]::WindowHeight } catch { 25 }
-    $lastMenuWidth = $termWidth
-    $lastMenuHeight = $termHeight
-    try { Clear-Host } catch {}
+    $chosenKey = Show-SubMenu -HubTitle $bannerTitle -Options $mainOptions -PromptText "Choose a hardware subsystem or hub:" -Subtitle $bannerSubtitle -DefaultIndex $selectedIndex
 
-    $exitMenu = $false
-
-    while (-not $exitMenu) {
-        $curW = Get-Width
-        $curH = try { [Console]::WindowHeight } catch { 25 }
-        if ($curW -ne $lastMenuWidth -or $curH -ne $lastMenuHeight) {
-            $termWidth = $curW
-            $termHeight = $curH
-            $lastMenuWidth = $curW
-            $lastMenuHeight = $curH
-            try { Clear-Host } catch {}
-        }
-
-        Reset-Cursor
-        Write-LineClean "$($global:G_TOP)   $bannerTitle" Cyan
-        Write-LineClean "$($global:G_RAIL)" DarkGray
-        Write-LineClean "$($global:G_DIAMOND)  Platform: $($hw.Manufacturer) $($hw.Model)  |  CPU: $($hw.CpuName)" DarkGray
-        Write-LineClean "$($global:G_RAIL)" DarkGray
-        Write-LineClean "$($global:G_DIAMOND)  Choose a hardware subsystem or hub:" White
-        Write-LineClean "$($global:G_RAIL)" DarkGray
-
-        for ($i = 0; $i -lt $mainOptions.Count; $i++) {
-            $opt = $mainOptions[$i]
-            $line = Format-MenuOptionLine -Option $opt -IsSelected ($i -eq $selectedIndex) -TermWidth $termWidth
-            if ($i -eq $selectedIndex) {
-                Write-LineClean $line Cyan
-            } else {
-                Write-LineClean $line DarkGray
-            }
-        }
-
-        Write-LineClean "$($global:G_RAIL)" DarkGray
-        $cardWidth = [math]::Min(62, [math]::Max(46, $termWidth - 6))
-        $padLen = [math]::Max(2, ($cardWidth - 14))
-        Write-LineClean ("$($global:G_DIAMOND)  Controls " + ($global:G_BAR * $padLen) + $global:G_TR) DarkGray
-        Write-LineClean ("$($global:G_RAIL)" + (" " * ($cardWidth + 1)) + "$($global:G_RAIL)") DarkGray
-        $arrowNav = "$([char]0x2191)/$([char]0x2193)"
-        $contentStr = "  [$arrowNav] Navigate   [Enter/Space] Select   [Q/Esc] Exit"
-        $contentPad = [math]::Max(1, ($cardWidth - $contentStr.Length + 1))
-        Write-LineClean ("$($global:G_RAIL)" + $contentStr + (" " * $contentPad) + "$($global:G_RAIL)") DarkGray
-        Write-LineClean ("$($global:G_RAIL)" + (" " * ($cardWidth + 1)) + "$($global:G_RAIL)") DarkGray
-        Write-LineClean ("$($global:G_TEE)" + ($global:G_BAR * ($cardWidth + 1)) + $global:G_BR) DarkGray
-        Write-LineClean "$($global:G_RAIL)" DarkGray
-        Write-LineClean "$($global:G_BOT)  Ready. Use arrow keys to navigate." DarkGray
-        try { [Console]::Write("`e[J") } catch {}
-
-        try {
-            if ([Console]::IsInputRedirected) {
-                return
-            }
-        } catch { return }
-
-        # Live responsive polling (detects zoom in / zoom out while sitting on menu)
-        while (-not [Console]::KeyAvailable) {
-            $checkW = Get-Width
-            $checkH = try { [Console]::WindowHeight } catch { 25 }
-            if ($checkW -ne $lastMenuWidth -or $checkH -ne $lastMenuHeight) {
-                break
-            }
-            Start-Sleep -Milliseconds 50
-        }
-
-        if (-not [Console]::KeyAvailable) {
-            continue
-        }
-
-        $keyInfo = [Console]::ReadKey($true)
-        $chosenKey = $null
-
-        switch ($keyInfo.Key) {
-            'UpArrow' {
-                $selectedIndex--
-                if ($selectedIndex -lt 0) { $selectedIndex = $mainOptions.Count - 1 }
-            }
-            'DownArrow' {
-                $selectedIndex++
-                if ($selectedIndex -ge $mainOptions.Count) { $selectedIndex = 0 }
-            }
-            'Enter' {
-                $chosenKey = $mainOptions[$selectedIndex].Key
-                $exitMenu = $true
-            }
-            'Spacebar' {
-                $chosenKey = $mainOptions[$selectedIndex].Key
-                $exitMenu = $true
-            }
-            'Escape' {
-                $chosenKey = "0"
-                $exitMenu = $true
-            }
-            Default {
-                $ch = $keyInfo.KeyChar
-                if ($ch -eq '0' -or $ch -eq 'q' -or $ch -eq 'Q') {
-                    $chosenKey = "0"
-                    $exitMenu = $true
-                }
-            }
-        }
+    if (-not $chosenKey -or $chosenKey -eq "0") {
+        try { Clear-Host } catch {}
+        Write-Host "Exiting OMNI. Goodbye!" -ForegroundColor Cyan
+        Start-Sleep -Milliseconds 300
+        exit 0
     }
 
-    Show-Cursor
-    Clear-Host
+    for ($i = 0; $i -lt $mainOptions.Count; $i++) {
+        if ($mainOptions[$i].Key -eq $chosenKey) { $selectedIndex = $i; break }
+    }
+
+    try { Clear-Host } catch {}
 
     switch ($chosenKey) {
         "1" {
