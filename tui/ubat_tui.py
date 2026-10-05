@@ -622,23 +622,104 @@ def run_ssd_trim_optimizer(live):
     live.start()
 
 
+def select_menu_option(hub_title, prompt_text, options, default_index=0):
+    """
+    Renders an interactive @clack/prompts menu in Python TUI.
+    Navigated via Up/Down arrow keys, Enter or Space to select, Esc or Q to cancel.
+    No number options displayed.
+    """
+    selected_idx = default_index
+    num_opts = len(options)
+
+    while True:
+        term_width = console.width or 88
+        card_width = min(62, max(46, term_width - 6))
+        pad_len = max(2, card_width - 14)
+
+        buf = []
+        buf.append(f"[bold cyan]┌   {hub_title}[/bold cyan]")
+        buf.append("[dim]│[/dim]")
+        buf.append(f"[bold cyan]◇[/bold cyan]  [bold white]{prompt_text}[/bold white]")
+        buf.append("[dim]│[/dim]")
+
+        for i, opt in enumerate(options):
+            bullet = "●" if i == selected_idx else "○"
+            title = opt["title"]
+            desc = opt.get("desc", "")
+            prefix = f"│  {bullet}  "
+            avail = term_width - len(prefix)
+            if avail <= 24 or not desc:
+                line_str = f"{prefix}{title}"
+            else:
+                pad = min(36, max(24, int(avail * 0.36)))
+                rem = avail - pad - 4
+                trimmed_desc = (desc[:rem - 3] + "...") if len(desc) > rem else desc
+                line_str = f"{prefix}{title.ljust(pad)} ─ {trimmed_desc}"
+
+            if i == selected_idx:
+                buf.append(f"[bold cyan]{line_str}[/bold cyan]")
+            else:
+                buf.append(f"[dim]{line_str}[/dim]")
+
+        buf.append("[dim]│[/dim]")
+        buf.append(f"[dim]◇  Controls {'─' * pad_len}╮[/dim]")
+        buf.append(f"[dim]│{' ' * (card_width + 1)}│[/dim]")
+        arrow_str = "  [↑/↓] Navigate   [Enter] Select   [Esc/Q] Back"
+        arrow_pad = max(1, card_width - len(arrow_str) + 1)
+        buf.append(f"[dim]│{arrow_str}{' ' * arrow_pad}│[/dim]")
+        buf.append(f"[dim]│{' ' * (card_width + 1)}│[/dim]")
+        buf.append(f"[dim]├{'─' * (card_width + 1)}╯[/dim]")
+        buf.append("[dim]│[/dim]")
+        buf.append("[dim]└  Ready. Use arrow keys to navigate.[/dim]")
+
+        sys.stdout.write("\x1b[H")
+        console.print("\n".join(buf))
+        sys.stdout.write("\x1b[J")
+        sys.stdout.flush()
+
+        ch = msvcrt.getch()
+        if ch in (b'\x00', b'\xe0'):
+            arrow = msvcrt.getch()
+            if arrow == b'H':  # Up arrow
+                selected_idx = (selected_idx - 1) % num_opts
+            elif arrow == b'P':  # Down arrow
+                selected_idx = (selected_idx + 1) % num_opts
+        elif ch in (b'\r', b' '):  # Enter or Space
+            console.clear()
+            return options[selected_idx]["key"]
+        elif ch in (b'\x1b', b'q', b'Q'):  # Esc or Q
+            console.clear()
+            return "0"
+
+
+def select_stress_duration(stress_title):
+    """Prompts for stress test duration using interactive Clack menu."""
+    dur_opts = [
+        {"key": "10", "title": "Quick Stress (10 seconds)", "desc": "Fast verification of thermal response & power spikes"},
+        {"key": "30", "title": "Standard Stress (30 seconds)", "desc": "Thorough thermal saturation & throttling check"},
+        {"key": "60", "title": "Extended Burn-In (60 seconds)", "desc": "Heavy sustained load & cooling dissipation test"},
+        {"key": "0", "title": "Cancel", "desc": "Return to benchmark menu"},
+    ]
+    res = select_menu_option(f"{stress_title} - DURATION", "Choose duration for stress test:", dur_opts)
+    if res in ("10", "30", "60"):
+        return int(res)
+    return 0
+
+
 def run_battery_optimizer_dialog(live):
     """Interactive Battery Optimization & Cleanup Dialog."""
     global STATUS_MESSAGE, STATUS_TIME
     live.stop()
     console.clear()
     script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "optimizer", "BatteryOptimizer.ps1")
-    console.print("\n[bold cyan]=============================================================================[/bold cyan]")
-    console.print("[bold white]            BATTERY OPTIMIZATION & CLEANUP CONTROLLER[/bold white]")
-    console.print("[bold cyan]=============================================================================[/bold cyan]")
-    console.print("  [bold yellow][1][/bold yellow] Battery & Power Optimization Audit (Audit CPU boost, ASPM & wakeups)")
-    console.print("  [bold yellow][2][/bold yellow] User-Level Battery Saver Cleanup (Purge %TEMP% & crash dumps - No Admin)")
-    console.print("  [bold yellow][3][/bold yellow] Admin-Level Deep System Cleanup & Power Tuning (Windows Temp & Update Cache)")
-    console.print("  [bold yellow][4][/bold yellow] Apply Universal Battery Profile (Cap CPU Boost 99% + PCIe ASPM)")
-    console.print("  [bold yellow][0][/bold yellow] Return to Dashboard")
-    console.print("[bold cyan]=============================================================================[/bold cyan]")
-
-    pick = console.input("\n[bold green]Select option [0-4]: [/bold green]").strip()
+    batt_opts = [
+        {"key": "1", "title": "Battery & Power Optimization Audit", "desc": "Audit CPU boost, ASPM, wake timers & background drain"},
+        {"key": "2", "title": "User-Level Battery Saver Cleanup", "desc": "Purge %TEMP% & crash dumps (No Admin required)"},
+        {"key": "3", "title": "Admin-Level Deep System Cleanup", "desc": "Windows Temp & Update Cache power tune"},
+        {"key": "4", "title": "Apply Universal Battery Profile", "desc": "Cap CPU Boost 99% on DC + configure PCIe ASPM"},
+        {"key": "0", "title": "Return to Dashboard", "desc": "Exit dialog"},
+    ]
+    pick = select_menu_option("BATTERY OPTIMIZATION & CLEANUP CONTROLLER", "Choose battery optimization or cleanup operation:", batt_opts)
     if pick == "1":
         subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script_path, "-AuditOnly"])
         console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
@@ -1487,22 +1568,18 @@ def run_interactive_benchmark(live):
         return
 
     live.stop()
-    console.clear()
-    console.print("\n[bold cyan]=============================================================================[/bold cyan]")
-    console.print("[bold white]            OMNI BENCHMARK & HARDWARE STRESS TESTING SUITE[/bold white]")
-    console.print("[bold cyan]=============================================================================[/bold cyan]")
-    console.print("  [bold yellow][1][/bold yellow] NVMe Storage Read Benchmark (Sequential MB/s, 4K Random IOPS, Latency)")
-    console.print("  [bold yellow][2][/bold yellow] Multi-Core CPU Stress Test (10s Sustained Thermal & Throttle Load)")
-    console.print("  [bold yellow][3][/bold yellow] Dedicated GPU Hardware Stress Test (10s at 100% Load & 2.7+ GHz)")
-    console.print("  [bold yellow][4][/bold yellow] Combined Full-System Burn-In Stress Test (CPU + GPU + RAM)")
-    console.print("  [bold yellow][5][/bold yellow] Manual Start / Stop Continuous Burn-In (Click/Press Key to Start & Stop)")
-    console.print("  [bold yellow][6][/bold yellow] CPU Computational Benchmark (Single-Thread & Multi-Thread Score)")
-    console.print("  [bold yellow][7][/bold yellow] DDR5 RAM Memory Bandwidth Benchmark (Sequential Read GB/s)")
-    console.print("  [bold yellow][8][/bold yellow] All-in-One Full System Hardware Benchmark (Storage + RAM + CPU + GPU)")
-    console.print("  [bold yellow][0][/bold yellow] Return to Dashboard")
-    console.print("[bold cyan]=============================================================================[/bold cyan]")
-
-    choice = console.input("\n[bold green]Select benchmark option [0-8]: [/bold green]").strip()
+    bench_opts = [
+        {"key": "1", "title": "NVMe Storage Read Benchmark", "desc": "Sequential MB/s, 4K Random IOPS, Latency"},
+        {"key": "2", "title": "Multi-Core CPU Stress Test", "desc": "Sustained Thermal & Throttle Load across all threads"},
+        {"key": "3", "title": "Dedicated GPU Hardware Stress Test", "desc": "RTX CUDA 100% Load & 2.7+ GHz burn-in"},
+        {"key": "4", "title": "Combined Full-System Burn-In Stress Test", "desc": "Saturate CPU, GPU & RAM simultaneously"},
+        {"key": "5", "title": "Manual Start / Stop Continuous Burn-In", "desc": "Continuous burn-in with live keypress start/stop"},
+        {"key": "6", "title": "CPU Computational Benchmark", "desc": "Single-Thread & Multi-Thread Score"},
+        {"key": "7", "title": "DDR5 RAM Memory Bandwidth Benchmark", "desc": "Sequential Read throughput in GB/s"},
+        {"key": "8", "title": "All-in-One Full System Hardware Benchmark", "desc": "Complete sequence of Storage, RAM, CPU & GPU"},
+        {"key": "0", "title": "Return to Dashboard", "desc": "Exit benchmark suite"},
+    ]
+    choice = select_menu_option("OMNI BENCHMARK & HARDWARE STRESS TESTING SUITE", "Choose a hardware benchmark or stress test:", bench_opts)
 
     if choice == "1":
         console.print("\n[bold cyan]Executing NVMe Storage Read Benchmark (128MB payload, 500 random seeks)...[/bold cyan]")
@@ -1526,15 +1603,10 @@ def run_interactive_benchmark(live):
         console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
 
     elif choice == "2":
-        dur = 10
-        try:
-            d_in = console.input("[bold cyan]Select duration: [1] 10s Quick  [2] 30s Standard  [3] 60s Extended (default: 10s): [/bold cyan]").strip()
-            if d_in == "2":
-                dur = 30
-            elif d_in == "3":
-                dur = 60
-        except Exception:
-            dur = 10
+        dur = select_stress_duration("MULTI-CORE CPU STRESS TEST")
+        if dur <= 0:
+            live.start()
+            return
 
         console.print(f"\n[bold yellow]Starting {dur}s Multi-Core CPU Stress Test across all logical threads...[/bold yellow]")
         console.print("[dim]Monitoring thermal rise and clock frequency shifts...[/dim]\n")
@@ -1567,15 +1639,10 @@ def run_interactive_benchmark(live):
         console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
 
     elif choice == "3":
-        dur = 10
-        try:
-            d_in = console.input("[bold cyan]Select duration: [1] 10s Quick  [2] 30s Standard  [3] 60s Extended (default: 10s): [/bold cyan]").strip()
-            if d_in == "2":
-                dur = 30
-            elif d_in == "3":
-                dur = 60
-        except Exception:
-            dur = 10
+        dur = select_stress_duration("DEDICATED GPU HARDWARE STRESS")
+        if dur <= 0:
+            live.start()
+            return
 
         console.print(f"\n[bold yellow]Starting {dur}s Dedicated GPU Hardware Stress Test across 524,288 CUDA threads...[/bold yellow]")
         console.print("[dim]Monitoring live GPU utilization %, temperature rise, clock MHz, and power draw...[/dim]\n")
@@ -1615,15 +1682,10 @@ def run_interactive_benchmark(live):
         console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
 
     elif choice == "4":
-        dur = 10
-        try:
-            d_in = console.input("[bold cyan]Select duration: [1] 10s Quick  [2] 30s Standard  [3] 60s Extended (default: 10s): [/bold cyan]").strip()
-            if d_in == "2":
-                dur = 30
-            elif d_in == "3":
-                dur = 60
-        except Exception:
-            dur = 10
+        dur = select_stress_duration("COMBINED FULL-SYSTEM BURN-IN")
+        if dur <= 0:
+            live.start()
+            return
 
         console.print(f"\n[bold yellow]Starting {dur}s Combined Full-System Burn-In Stress Test (CPU + GPU + RAM)...[/bold yellow]")
         console.print("[dim]Simultaneously saturating all CPU threads and dedicated GPU CUDA cores...[/dim]\n")
@@ -1665,23 +1727,20 @@ def run_interactive_benchmark(live):
         console.input("\n[dim]Press Enter to return to dashboard...[/dim]")
 
     elif choice == "5":
-        console.print("\n[bold cyan]=============================================================================[/bold cyan]")
-        console.print("[bold white]            MANUAL START / STOP HARDWARE STRESS TEST[/bold white]")
-        console.print("[bold cyan]=============================================================================[/bold cyan]")
-        console.print("  Select target component for continuous burn-in:")
-        console.print("  [bold yellow][1][/bold yellow] Combined Full-System Burn-In (CPU + Dedicated GPU + RAM)")
-        console.print("  [bold yellow][2][/bold yellow] Dedicated GPU Hardware Stress (CUDA 100% Load & High-Clock Burn-In)")
-        console.print("  [bold yellow][3][/bold yellow] Multi-Core CPU Thermal Stress (All Logical Processor Threads)")
-        console.print("  [bold yellow][0][/bold yellow] Cancel")
-        console.print("[bold cyan]=============================================================================[/bold cyan]")
-        sub = console.input("\n[bold green]Select target [0-3]: [/bold green]").strip()
-        if sub == "1":
+        tgt_opts = [
+            {"key": "system", "title": "Combined Full-System Burn-In", "desc": "CPU + Dedicated GPU + RAM to 95%"},
+            {"key": "gpu", "title": "Dedicated GPU Hardware Stress", "desc": "CUDA 100% Load & High-Clock Burn-In"},
+            {"key": "cpu", "title": "Multi-Core CPU Thermal Stress", "desc": "All Logical Processor Threads"},
+            {"key": "0", "title": "Cancel", "desc": "Return to benchmark menu"},
+        ]
+        sub = select_menu_option("MANUAL START / STOP HARDWARE STRESS TEST", "Select target component for continuous burn-in:", tgt_opts)
+        if sub == "system":
             target = "system"
             target_label = "Combined Full-System Burn-In"
-        elif sub == "2":
+        elif sub == "gpu":
             target = "gpu"
             target_label = "Dedicated GPU Hardware Stress"
-        elif sub == "3":
+        elif sub == "cpu":
             target = "cpu"
             target_label = "Multi-Core CPU Stress"
         else:

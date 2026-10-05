@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     OMNI - Master System Hardware & Optimization Suite
 .DESCRIPTION
@@ -26,6 +26,23 @@ $laptopTitle = if ($rawModel -match [regex]::Escape($rawMfg)) {
     "$rawMfg $rawModel".ToUpper()
 }
 $bannerTitle = "OMNI HARDWARE TELEMETRY & SYSTEM MONITOR - $laptopTitle"
+
+# Ensure UTF-8 console output encoding
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+try { [Console]::InputEncoding  = [System.Text.Encoding]::UTF8 } catch {}
+
+# Unicode Box Drawing & Clack Timeline Glyphs (String typed for multiplication and formatting)
+$global:G_RAIL    = [string][char]0x2502  # │
+$global:G_TOP     = [string][char]0x250C  # ┌
+$global:G_BOT     = [string][char]0x2514  # └
+$global:G_TEE     = [string][char]0x251C  # ├
+$global:G_BAR     = [string][char]0x2500  # ─
+$global:G_TR      = [string][char]0x256E  # ╮
+$global:G_BR      = [string][char]0x256F  # ╯
+$global:G_DIAMOND = [string][char]0x25C7  # ◇
+$global:G_ACTIVE  = [string][char]0x25CF  # ●
+$global:G_IDLE    = [string][char]0x25CB  # ○
+$global:G_CHECK   = [string][char]0x2713  # ✓
 
 # Console helper functions are provided by core\ConsoleHelpers.ps1 (dot-sourced above)
 
@@ -111,7 +128,8 @@ function Show-SubMenu {
             $padLen = [math]::Max(2, ($cardWidth - 14))
             Write-LineClean ("$($global:G_DIAMOND)  Controls " + ($global:G_BAR * $padLen) + $global:G_TR) DarkGray
             Write-LineClean ("$($global:G_RAIL)" + (" " * ($cardWidth + 1)) + "$($global:G_RAIL)") DarkGray
-            $contentStr = "  [↑/↓] Navigate   [Enter] Select   [Esc/Q] Back"
+            $arrowNav = "$([char]0x2191)/$([char]0x2193)"
+            $contentStr = "  [$arrowNav] Navigate   [Enter] Select   [Esc/Q] Back"
             $contentPad = [math]::Max(1, ($cardWidth - $contentStr.Length + 1))
             Write-LineClean ("$($global:G_RAIL)" + $contentStr + (" " * $contentPad) + "$($global:G_RAIL)") DarkGray
             Write-LineClean ("$($global:G_RAIL)" + (" " * ($cardWidth + 1)) + "$($global:G_RAIL)") DarkGray
@@ -163,11 +181,6 @@ function Show-SubMenu {
                     $ch = $kInfo.KeyChar
                     if ($ch -eq '0' -or $ch -eq 'q' -or $ch -eq 'Q') {
                         return "0"
-                    } elseif ($ch -match '^[1-9]$') {
-                        $matched = $Options | Where-Object { $_.Key -eq $ch.ToString() }
-                        if ($matched) {
-                            return $matched.Key
-                        }
                     }
                 }
             }
@@ -178,7 +191,19 @@ function Show-SubMenu {
     }
 }
 
-
+function Get-StressDuration {
+    param([string]$StressName)
+    $durOpts = @(
+        [PSCustomObject]@{ Key = "10"; Title = "Quick Stress (10 seconds)";     Desc = "Fast verification of thermal response & power spikes" }
+        [PSCustomObject]@{ Key = "30"; Title = "Standard Stress (30 seconds)";  Desc = "Thorough thermal saturation & throttling check" }
+        [PSCustomObject]@{ Key = "60"; Title = "Extended Burn-In (60 seconds)"; Desc = "Heavy sustained load & cooling dissipation test" }
+        [PSCustomObject]@{ Key = "0";  Title = "Cancel";                        Desc = "Return to benchmark menu" }
+    )
+    $res = Show-SubMenu -HubTitle "$StressName - DURATION" -Options $durOpts
+    try { Clear-Host } catch {}
+    if ($res -in "10", "30", "60") { return [int]$res }
+    return 0
+}
 
 $mainOptions = @(
     [PSCustomObject]@{ Key = "1"; Title = "Live System Monitor";          Desc = "All-in-One real-time terminal telemetry engine" }
@@ -239,7 +264,8 @@ while ($true) {
         $padLen = [math]::Max(2, ($cardWidth - 14))
         Write-LineClean ("$($global:G_DIAMOND)  Controls " + ($global:G_BAR * $padLen) + $global:G_TR) DarkGray
         Write-LineClean ("$($global:G_RAIL)" + (" " * ($cardWidth + 1)) + "$($global:G_RAIL)") DarkGray
-        $contentStr = "  [↑/↓] Navigate   [Enter/Space] Select   [Q/Esc] Exit"
+        $arrowNav = "$([char]0x2191)/$([char]0x2193)"
+        $contentStr = "  [$arrowNav] Navigate   [Enter/Space] Select   [Q/Esc] Exit"
         $contentPad = [math]::Max(1, ($cardWidth - $contentStr.Length + 1))
         Write-LineClean ("$($global:G_RAIL)" + $contentStr + (" " * $contentPad) + "$($global:G_RAIL)") DarkGray
         Write-LineClean ("$($global:G_RAIL)" + (" " * ($cardWidth + 1)) + "$($global:G_RAIL)") DarkGray
@@ -294,15 +320,9 @@ while ($true) {
             }
             Default {
                 $ch = $keyInfo.KeyChar
-                if ($ch -eq 'q' -or $ch -eq 'Q') {
+                if ($ch -eq '0' -or $ch -eq 'q' -or $ch -eq 'Q') {
                     $chosenKey = "0"
                     $exitMenu = $true
-                } elseif ($ch -match '^[0-7]$') {
-                    $matchedOpt = $mainOptions | Where-Object { $_.Key -eq $ch.ToString() }
-                    if ($matchedOpt) {
-                        $chosenKey = $matchedOpt.Key
-                        $exitMenu = $true
-                    }
                 }
             }
         }
@@ -526,58 +546,52 @@ while ($true) {
                     [Console]::ReadKey($true) | Out-Null
                 }
                 "2" {
-                    $dur = Read-Host " Select duration: [1] 10s Quick  [2] 30s Standard  [3] 60s Extended (default 10s)"
-                    $dSec = switch ($dur.Trim()) { "2" { 30 } "3" { 60 } default { 10 } }
-                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -CpuStress -StressDuration $dSec
-                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
+                    $dSec = Get-StressDuration -StressName "MULTI-CORE CPU THERMAL STRESS"
+                    if ($dSec -gt 0) {
+                        & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -CpuStress -StressDuration $dSec
+                        Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                        [Console]::ReadKey($true) | Out-Null
+                    }
                 }
                 "3" {
-                    $dur = Read-Host " Select duration: [1] 10s Quick  [2] 30s Standard  [3] 60s Extended (default 10s)"
-                    $dSec = switch ($dur.Trim()) { "2" { 30 } "3" { 60 } default { 10 } }
-                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -GpuStress -StressDuration $dSec
-                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
+                    $dSec = Get-StressDuration -StressName "DEDICATED GPU HARDWARE STRESS"
+                    if ($dSec -gt 0) {
+                        & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -GpuStress -StressDuration $dSec
+                        Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                        [Console]::ReadKey($true) | Out-Null
+                    }
                 }
                 "4" {
-                    $dur = Read-Host " Select duration: [1] 10s Quick  [2] 30s Standard  [3] 60s Extended (default 10s)"
-                    $dSec = switch ($dur.Trim()) { "2" { 30 } "3" { 60 } default { 10 } }
-                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -RamStress -StressDuration $dSec
-                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
+                    $dSec = Get-StressDuration -StressName "PHYSICAL RAM SATURATION STRESS"
+                    if ($dSec -gt 0) {
+                        & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -RamStress -StressDuration $dSec
+                        Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                        [Console]::ReadKey($true) | Out-Null
+                    }
                 }
                 "5" {
-                    $dur = Read-Host " Select duration: [1] 10s Quick  [2] 30s Standard  [3] 60s Extended (default 10s)"
-                    $dSec = switch ($dur.Trim()) { "2" { 30 } "3" { 60 } default { 10 } }
-                    & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -SystemStress -StressDuration $dSec
-                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
+                    $dSec = Get-StressDuration -StressName "COMBINED FULL-SYSTEM BURN-IN"
+                    if ($dSec -gt 0) {
+                        & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -SystemStress -StressDuration $dSec
+                        Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                        [Console]::ReadKey($true) | Out-Null
+                    }
                 }
                 "6" {
-                    try { Clear-Host } catch { }
-                    Write-Host "================================================================================" -ForegroundColor Cyan
-                    Write-Host "       MANUAL START / STOP HARDWARE STRESS TEST CONTROLLER" -ForegroundColor Yellow
-                    Write-Host "================================================================================" -ForegroundColor Cyan
-                    Write-Host " Select Target Component for Continuous Burn-In:" -ForegroundColor White
-                    Write-Host " [1] Combined Full-System Burn-In (CPU + Dedicated GPU + RAM to 95%)" -ForegroundColor White
-                    Write-Host " [2] Dedicated GPU Stress (RTX 5050 CUDA 100% @ 2.7+ GHz)" -ForegroundColor White
-                    Write-Host " [3] Multi-Core CPU Thermal Stress (All 24 Logical Threads)" -ForegroundColor White
-                    Write-Host " [4] Dedicated Physical RAM Saturation (Fill RAM to 95%+)" -ForegroundColor White
-                    Write-Host " [0] Cancel" -ForegroundColor DarkGray
-                    Write-Host "--------------------------------------------------------------------------------" -ForegroundColor Cyan
-                    $mPick = Read-Host " Select target [0-4]"
-                    $tgt = switch ($mPick) {
-                        "1" { "system" }
-                        "2" { "gpu" }
-                        "3" { "cpu" }
-                        "4" { "ram" }
-                        default { $null }
-                    }
-                    if ($tgt) {
+                    $tgtOpts = @(
+                        [PSCustomObject]@{ Key = "system"; Title = "Combined Full-System Burn-In";     Desc = "Saturate CPU, Dedicated GPU & RAM to 95% simultaneously" }
+                        [PSCustomObject]@{ Key = "gpu";    Title = "Dedicated GPU Stress";             Desc = "CUDA 100% load & maximum core clock" }
+                        [PSCustomObject]@{ Key = "cpu";    Title = "Multi-Core CPU Thermal Stress";    Desc = "All logical threads saturated with live thermal tracking" }
+                        [PSCustomObject]@{ Key = "ram";    Title = "Dedicated Physical RAM Saturation"; Desc = "Fill RAM to 95%+ with active memory bus churn" }
+                        [PSCustomObject]@{ Key = "0";      Title = "Cancel";                           Desc = "Return to benchmark menu" }
+                    )
+                    $tgt = Show-SubMenu -HubTitle "CONTINUOUS STRESS TEST TARGET" -Options $tgtOpts
+                    try { Clear-Host } catch {}
+                    if ($tgt -and $tgt -ne "0") {
                         & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -ManualStress -Target $tgt
+                        Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
+                        [Console]::ReadKey($true) | Out-Null
                     }
-                    Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
-                    [Console]::ReadKey($true) | Out-Null
                 }
                 "7" {
                     & "$ScriptDir\diagnostics\BenchmarkEngine.ps1" -CpuBench

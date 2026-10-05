@@ -197,8 +197,8 @@ function Show-Footer {
     $termWidth = Get-TermWidth
 
     Write-LineClean ("-" * $termWidth) Cyan
-    Write-LineClean " Views: [1] Full  [2] Battery  [3] CPU  [4] RAM  [5] SSD  [6] Process Table" Yellow
-    Write-LineClean " Keys:  [1-6] View  |  [F] Fast (0.5s)  |  [S] Normal (1s)  |  [+/-] Speed  |  [Q] Quit" DarkGray
+    Write-LineClean " Views: Full  |  Battery  |  CPU  |  RAM  |  SSD  |  Process Table" Yellow
+    Write-LineClean " Keys:  [1-6] Switch View  |  [F] Fast (0.5s)  |  [S] Normal (1s)  |  [+/-] Speed  |  [Q] Quit" DarkGray
     # Clean any leftover trailing lines below footer
     try { [Console]::Write("`e[J") } catch {}
 }
@@ -238,13 +238,13 @@ function Show-PartitionMenu {
         Write-LineClean ("=" * $termWidth) Cyan
         Write-LineClean "" White
         Write-LineClean " Choose which partition to display:" White
-        Write-LineClean " (Use [Up / Down] Arrow Keys to navigate, [Enter] to select, or press [1-6])" DarkGray
+        Write-LineClean " (Use arrow keys to navigate, [Enter] to select)" DarkGray
         Write-LineClean "" White
 
         for ($i = 0; $i -lt $menuOptions.Count; $i++) {
             $opt = $menuOptions[$i]
-            $num = $i + 1
-            $prefix = if ($i -eq $selectedIndex) { "  > [$num] " } else { "    [$num] " }
+            $bullet = if ($i -eq $selectedIndex) { $global:G_ACTIVE } else { $global:G_IDLE }
+            $prefix = "  $bullet  "
             $avail = $termWidth - $prefix.Length
             if ($avail -lt 40) {
                 $line = "$prefix$($opt.Title)"
@@ -272,7 +272,7 @@ function Show-PartitionMenu {
 
         Write-LineClean "" White
         Write-LineClean ("-" * $termWidth) Cyan
-        Write-LineClean " Controls: [Up / Down] Move Selection  |  [Enter / Space] Launch  |  [1-6] Jump  |  [Q] Exit" DarkGray
+        Write-LineClean " Controls: [Up / Down] Move Selection  |  [Enter / Space] Launch  |  [Q] Exit" DarkGray
         try { [Console]::Write("`e[J") } catch {}
 
         # Non-interactive fallback
@@ -515,7 +515,7 @@ try {
                 $procList = Get-ProcessTableSample -Count 14
                 $tableStr = $procList | Format-Table -Property ProcessName, PID, 'CPU(%)', 'RAM(MB)', 'RAM(%)', 'Disk(KB/s)', 'GPU', 'Power' -AutoSize | Out-String
                 Write-BlockClean $tableStr White
-                Write-LineClean " Tip: To kill any rogue process, open 'ubat.bat' and select Option [7]." DarkGray
+                Write-LineClean " Tip: To kill any rogue process, open 'ubat.bat' and select Process Manager Hub." DarkGray
                 Show-Footer $Interval
             }
 

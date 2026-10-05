@@ -16,6 +16,8 @@ param(
 $PSScriptRoot | Out-Null  # ensure $PSScriptRoot is bound
 # RootDir is the ubat/ project root (parent of optimizer/)
 $RootDir = Split-Path $PSScriptRoot -Parent
+$consoleHelpersPath = Join-Path $RootDir "core\ConsoleHelpers.ps1"
+if (Test-Path $consoleHelpersPath) { . $consoleHelpersPath }
 $w = 88
 try {
     if ([Console]::WindowWidth -gt 1) {
@@ -303,27 +305,17 @@ if ($AdminOnly) {
 }
 
 # Interactive Menu Loop
+$optList = @(
+    [PSCustomObject]@{ Key = "1"; Title = "Battery & Power Optimization Audit";  Desc = "Audit CPU boost, ASPM, wake timers & background drain" }
+    [PSCustomObject]@{ Key = "2"; Title = "User-Level Battery Saver Cleanup";     Desc = "Purge %TEMP% & user crash dumps (No Admin required)" }
+    [PSCustomObject]@{ Key = "3"; Title = "Admin-Level Deep System Cleanup";      Desc = "Clean Windows Update cache, System temp & power tune" }
+    [PSCustomObject]@{ Key = "4"; Title = "Apply Universal Battery Power Profile"; Desc = "Cap CPU Boost 99% on DC & configure PCIe ASPM" }
+    [PSCustomObject]@{ Key = "0"; Title = "Return to Battery Hub";                Desc = "Back to previous menu" }
+)
+
 while ($true) {
+    $choice = Show-SubMenu -HubTitle "BATTERY OPTIMIZATION & CLEANUP HUB" -Options $optList
     try { Clear-Host } catch {}
-    Write-Host ("=" * $w) -ForegroundColor Cyan
-    $mTitle = "BATTERY OPTIMIZATION & CLEANUP HUB"
-    $spaces = [math]::Max(0, [math]::Floor(($w - $mTitle.Length) / 2))
-    $mTitleText = if ($mTitle.Length -gt $w) { $mTitle.Substring(0, $w) } else { (" " * $spaces) + $mTitle }
-    Write-Host $mTitleText -ForegroundColor Yellow
-    Write-Host ("=" * $w) -ForegroundColor Cyan
-    Write-Host " Select battery optimization or cleanup operation:" -ForegroundColor White
-    Write-Host " [1] Battery & Power Optimization Audit (Check if optimization is required)" -ForegroundColor White
-    Write-Host " [2] User-Level Battery Saver Cleanup (Purge %TEMP% & crash dumps - No Admin)" -ForegroundColor White
-    Write-Host " [3] Admin-Level Deep System Cleanup & Power Tuning (Windows Temp & Update Cache)" -ForegroundColor White
-    Write-Host " [4] Apply Universal Battery Power Plan Profile (CPU Boost 99% + PCIe ASPM)" -ForegroundColor White
-    Write-Host " [0] Return to Battery Hub" -ForegroundColor DarkGray
-    Write-Host ("-" * $w) -ForegroundColor Cyan
-
-    try {
-        if ([Console]::IsInputRedirected) { return }
-    } catch { return }
-
-    $choice = Read-Host " Select an option [0-4]"
     switch ($choice) {
         "1" {
             Audit-BatteryPowerHealth
@@ -350,7 +342,7 @@ while ($true) {
             Write-Host "`nPress any key to return..." -ForegroundColor DarkGray
             try { [Console]::ReadKey($true) | Out-Null } catch {}
         }
-        "0" {
+        Default {
             return
         }
     }
