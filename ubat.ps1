@@ -32,17 +32,17 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 try { [Console]::InputEncoding  = [System.Text.Encoding]::UTF8 } catch {}
 
 # Unicode Box Drawing & Clack Timeline Glyphs (String typed for multiplication and formatting)
-$global:G_RAIL    = [string][char]0x2502  # │
-$global:G_TOP     = [string][char]0x250C  # ┌
-$global:G_BOT     = [string][char]0x2514  # └
-$global:G_TEE     = [string][char]0x251C  # ├
-$global:G_BAR     = [string][char]0x2500  # ─
-$global:G_TR      = [string][char]0x256E  # ╮
-$global:G_BR      = [string][char]0x256F  # ╯
-$global:G_DIAMOND = [string][char]0x25C7  # ◇
-$global:G_ACTIVE  = [string][char]0x25CF  # ●
-$global:G_IDLE    = [string][char]0x25CB  # ○
-$global:G_CHECK   = [string][char]0x2713  # ✓
+$global:G_RAIL    = [string][char]0x2502  # U+2502 vertical rail
+$global:G_TOP     = [string][char]0x250C  # U+250C top-left corner
+$global:G_BOT     = [string][char]0x2514  # U+2514 bottom-left corner
+$global:G_TEE     = [string][char]0x251C  # U+251C tee-branch
+$global:G_BAR     = [string][char]0x2500  # U+2500 horizontal bar
+$global:G_TR      = [string][char]0x256E  # U+256E rounded top-right
+$global:G_BR      = [string][char]0x256F  # U+256F rounded bottom-right
+$global:G_DIAMOND = [string][char]0x25C7  # U+25C7 diamond
+$global:G_ACTIVE  = [string][char]0x25CF  # U+25CF solid circle
+$global:G_IDLE    = [string][char]0x25CB  # U+25CB empty circle
+$global:G_CHECK   = [string][char]0x2713  # U+2713 checkmark
 
 # Console helper utilities and modern menu engine provided by core\ConsoleHelpers.ps1
 
@@ -72,7 +72,7 @@ $mainOptions = @(
 )
 
 $selectedIndex = 0
-$bannerSubtitle = "Platform: $($hw.Manufacturer) $($hw.Model)  •  CPU: $($hw.CpuName)"
+$bannerSubtitle = "Platform: $($hw.Manufacturer) $($hw.Model)  |  CPU: $($hw.CpuName)"
 
 while ($true) {
     $chosenKey = Show-SubMenu -HubTitle $bannerTitle -Options $mainOptions -PromptText "Choose a hardware subsystem or hub:" -Subtitle $bannerSubtitle -DefaultIndex $selectedIndex

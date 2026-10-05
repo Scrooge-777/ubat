@@ -641,19 +641,19 @@ def select_menu_option(hub_title, prompt_text, options, default_index=0):
         clean_title = (hub_title[:max_title_chars - 3] + "...") if len(hub_title) > max_title_chars else hub_title
         title_badge = f" [ {clean_title} ] "
         dashes_needed = max(1, box_width - 4 - len(title_badge))
-        top_line = f"╭──{title_badge}" + ("─" * dashes_needed) + "╮"
+        top_line = f"\u256d\u2500\u2500{title_badge}" + ("\u2500" * dashes_needed) + "\u256e"
         if len(top_line) > box_width:
-            top_line = top_line[:box_width - 1] + "╮"
+            top_line = top_line[:box_width - 1] + "\u256e"
 
         buf = []
         buf.append(f"[bold cyan]{top_line}[/bold cyan]")
-        buf.append(f"[dim]│{' ' * inner_width}│[/dim]")
+        buf.append(f"[dim]\u2502{' ' * inner_width}\u2502[/dim]")
 
         # 2. Prompt Text
         prompt_clean = (prompt_text[:inner_width - 9] + "...") if len(prompt_text) > (inner_width - 6) else prompt_text
         prompt_pad = max(0, inner_width - 5 - len(prompt_clean))
-        buf.append(f"[dim]│[/dim]  [bold cyan]◇[/bold cyan]  [bold white]{prompt_clean}[/bold white]{' ' * prompt_pad}[dim]│[/dim]")
-        buf.append(f"[dim]│{' ' * inner_width}│[/dim]")
+        buf.append(f"[dim]\u2502[/dim]  [bold cyan]\u25c7[/bold cyan]  [bold white]{prompt_clean}[/bold white]{' ' * prompt_pad}[dim]\u2502[/dim]")
+        buf.append(f"[dim]\u2502{' ' * inner_width}\u2502[/dim]")
 
         # 3. Options with Aligned Columns
         max_t = max(len(opt["title"]) for opt in options) if options else 20
@@ -661,41 +661,41 @@ def select_menu_option(hub_title, prompt_text, options, default_index=0):
         col_title_width = min(max_col_allowed, max(20, max_t))
 
         for i, opt in enumerate(options):
-            bullet = "●" if i == selected_idx else "○"
+            bullet = "\u25cf" if i == selected_idx else "\u25cb"
             raw_title = opt["title"]
             title_padded = (raw_title[:col_title_width - 3] + "...") if len(raw_title) > col_title_width else raw_title.ljust(col_title_width)
 
             avail_desc = max(0, inner_width - 5 - col_title_width - 3 - 2)
             raw_desc = str(opt.get("desc", ""))
             desc = (raw_desc[:avail_desc - 3] + "...") if len(raw_desc) > avail_desc else raw_desc
-            sep_str = " ─ " if (avail_desc >= 6 and len(desc) > 0) else "   "
+            sep_str = " \u2500 " if (avail_desc >= 6 and len(desc) > 0) else "   "
 
             inner_row = f"  {bullet}  {title_padded}{sep_str}{desc}"
             trail_spaces = max(0, inner_width - len(inner_row))
 
             if i == selected_idx:
-                buf.append(f"[bold cyan]│[/bold cyan]  [bold cyan]{bullet}[/bold cyan]  [bold white]{title_padded}[/bold white][bold cyan]{sep_str}[/bold cyan][bold cyan]{desc}[/bold cyan]{' ' * trail_spaces}[bold cyan]│[/bold cyan]")
+                buf.append(f"[bold cyan]\u2502[/bold cyan]  [bold cyan]{bullet}[/bold cyan]  [bold white]{title_padded}[/bold white][bold cyan]{sep_str}[/bold cyan][bold cyan]{desc}[/bold cyan]{' ' * trail_spaces}[bold cyan]\u2502[/bold cyan]")
             else:
-                buf.append(f"[dim]│  {bullet}  {title_padded}{sep_str}{desc}{' ' * trail_spaces}│[/dim]")
+                buf.append(f"[dim]\u2502  {bullet}  {title_padded}{sep_str}{desc}{' ' * trail_spaces}\u2502[/dim]")
 
         # 4. Divider
-        buf.append(f"[dim]│{' ' * inner_width}│[/dim]")
-        buf.append(f"[dim]├{'─' * inner_width}┤[/dim]")
+        buf.append(f"[dim]\u2502{' ' * inner_width}\u2502[/dim]")
+        buf.append(f"[dim]\u251c{'\u2500' * inner_width}\u2524[/dim]")
 
         # 5. Controls Footer
         action_label = "Exit" if ("MAIN" in hub_title or "TELEMETRY" in hub_title) else "Back"
-        ctrl_visual = f"  [↑/↓] Navigate    [Enter] Select    [Esc/Q] {action_label}"
+        ctrl_visual = f"  [\u2191/\u2193] Navigate    [Enter] Select    [Esc/Q] {action_label}"
         if len(ctrl_visual) > inner_width:
-            ctrl_visual = f"  [↑/↓] Nav  [Enter] Select  [Esc] {action_label}"
+            ctrl_visual = f"  [\u2191/\u2193] Nav  [Enter] Select  [Esc] {action_label}"
         ctrl_pad = max(0, inner_width - len(ctrl_visual))
-        buf.append(f"[dim]│[/dim]  [bold white][↑/↓][/bold white] [dim]Navigate    [/dim][bold white][Enter][/bold white] [dim]Select    [/dim][bold white][Esc/Q][/bold white] [dim]{action_label}[/dim]{' ' * ctrl_pad}[dim]│[/dim]")
+        buf.append(f"[dim]\u2502[/dim]  [bold white][\u2191/\u2193][/bold white] [dim]Navigate    [/dim][bold white][Enter][/bold white] [dim]Select    [/dim][bold white][Esc/Q][/bold white] [dim]{action_label}[/dim]{' ' * ctrl_pad}[dim]\u2502[/dim]")
 
         # 6. Footer
         footer_badge = " [ Ready ] "
         bot_dashes = max(1, box_width - 4 - len(footer_badge))
-        bot_line = f"╰──{footer_badge}" + ("─" * bot_dashes) + "╯"
+        bot_line = f"\u2570\u2500\u2500{footer_badge}" + ("\u2500" * bot_dashes) + "\u256f"
         if len(bot_line) > box_width:
-            bot_line = bot_line[:box_width - 1] + "╯"
+            bot_line = bot_line[:box_width - 1] + "\u256f"
         buf.append(f"[bold cyan]{bot_line}[/bold cyan]")
 
         sys.stdout.write("\x1b[H")

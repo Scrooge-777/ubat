@@ -20,3 +20,6 @@ __pycache__/
 # User local preferences & benchmark history
 ubat-prefs.json
 logs/*.json
+
+# Archify tool outputs
+.archify/

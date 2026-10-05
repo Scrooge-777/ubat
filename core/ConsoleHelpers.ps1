@@ -12,21 +12,21 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 try { [Console]::InputEncoding  = [System.Text.Encoding]::UTF8 } catch {}
 
 # Unicode Box Drawing & Clack Timeline Glyphs (String typed for multiplication and formatting)
-$global:G_RAIL    = [string][char]0x2502  # │
-$global:G_TOP     = [string][char]0x250C  # ┌
-$global:G_BOT     = [string][char]0x2514  # └
-$global:G_TEE     = [string][char]0x251C  # ├
-$global:G_BAR     = [string][char]0x2500  # ─
-$global:G_TL      = [string][char]0x256D  # ╭
-$global:G_TR      = [string][char]0x256E  # ╮
-$global:G_BL      = [string][char]0x2570  # ╰
-$global:G_BR      = [string][char]0x256F  # ╯
-$global:G_LT      = [string][char]0x251C  # ├
-$global:G_RT      = [string][char]0x2524  # ┤
-$global:G_DIAMOND = [string][char]0x25C7  # ◇
-$global:G_ACTIVE  = [string][char]0x25CF  # ●
-$global:G_IDLE    = [string][char]0x25CB  # ○
-$global:G_CHECK   = [string][char]0x2713  # ✓
+$global:G_RAIL    = [string][char]0x2502  # U+2502 vertical rail
+$global:G_TOP     = [string][char]0x250C  # U+250C top-left corner
+$global:G_BOT     = [string][char]0x2514  # U+2514 bottom-left corner
+$global:G_TEE     = [string][char]0x251C  # U+251C tee-branch
+$global:G_BAR     = [string][char]0x2500  # U+2500 horizontal bar
+$global:G_TL      = [string][char]0x256D  # U+256D rounded top-left
+$global:G_TR      = [string][char]0x256E  # U+256E rounded top-right
+$global:G_BL      = [string][char]0x2570  # U+2570 rounded bottom-left
+$global:G_BR      = [string][char]0x256F  # U+256F rounded bottom-right
+$global:G_LT      = [string][char]0x251C  # U+251C left tee
+$global:G_RT      = [string][char]0x2524  # U+2524 right tee
+$global:G_DIAMOND = [string][char]0x25C7  # U+25C7 diamond
+$global:G_ACTIVE  = [string][char]0x25CF  # U+25CF solid circle
+$global:G_IDLE    = [string][char]0x25CB  # U+25CB empty circle
+$global:G_CHECK   = [string][char]0x2713  # U+2713 checkmark
 
 function Hide-Cursor {
     try { [Console]::CursorVisible = $false } catch {}
@@ -178,7 +178,7 @@ function Format-MenuOptionLine {
     } else {
         $rawDesc
     }
-    $sepStr = if ($availDesc -ge 6 -and $desc.Length -gt 0) { " ─ " } else { "   " }
+    $sepStr = if ($availDesc -ge 6 -and $desc.Length -gt 0) { " $global:G_BAR " } else { "   " }
     $innerRow = "  $bullet  $titlePadded$sepStr$desc"
     $trailSpaces = [math]::Max(0, $innerWidth - $innerRow.Length)
     return "$global:G_RAIL$innerRow" + (" " * $trailSpaces) + "$global:G_RAIL"
@@ -286,7 +286,7 @@ function Show-SubMenu {
                     $rawDesc
                 }
 
-                $sepStr = if ($availDesc -ge 6 -and $desc.Length -gt 0) { " ─ " } else { "   " }
+                $sepStr = if ($availDesc -ge 6 -and $desc.Length -gt 0) { " $global:G_BAR " } else { "   " }
                 $innerRow = "  $bullet  $titlePadded$sepStr$desc"
                 $trailSpaces = [math]::Max(0, $innerWidth - $innerRow.Length)
 
