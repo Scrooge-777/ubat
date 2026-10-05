@@ -12,6 +12,8 @@
 
 OMNI is a modular, hardware-adaptive telemetry and optimization toolkit built for any Windows PC or laptop. It features high-speed sensor ingestion, live terminal dashboards, non-destructive hardware stress testing, storage optimization, and automated power tuning.
 
+For deep system specifications and subsystem breakdown, see the [Architecture Specification](docs/ARCHITECTURE.md).
+
 ---
 
 ## Architecture Overview
