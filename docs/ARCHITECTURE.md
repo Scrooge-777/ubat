@@ -5,20 +5,20 @@
 OMNI (Unified Battery & System Optimization Suite) is an engineering-grade hardware telemetry, benchmarking, and power tuning toolkit designed for high-performance mobile workstations and gaming laptops (such as the HP OMEN series).
 
 ```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                                OMNI ARCHITECTURE                                       │
-│                                                                                        │
-│   ┌────────────────────────┐      ┌───────────────────────┐      ┌─────────────────┐   │
-│   │    PowerShell Core     │ <──> │  Python Rich Engine   │ <──> │  Native Sensor  │   │
-│   │       (ubat.ps1)       │      │   (tui/ubat_tui.py)   │      │ (NVML/WMI/DTT)  │   │
-│   └────────────────────────┘      └───────────────────────┘      └─────────────────┘   │
-│               │                               │                                        │
-│               ▼                               ▼                                        │
-│   ┌────────────────────────┐      ┌───────────────────────┐      ┌─────────────────┐   │
-│   │  Storage & Diagnostics │      │  Battery Optimization │      │ Hardware Stress │   │
-│   │   (NVMe / TRIM / SMART)│      │  (PowerPlan / ASPM)   │      │  (CPU/GPU/RAM)  │   │
-│   └────────────────────────┘      └───────────────────────┘      └─────────────────┘   │
-└────────────────────────────────────────────────────────────────────────────────────────┘
++----------------------------------------------------------------------------------------+
+|                                OMNI ARCHITECTURE                                       |
+|                                                                                        |
+|   +------------------------+      +-----------------------+      +-----------------+   |
+|   |    PowerShell Core     | <--> |  Python Rich Engine   | <--> |  Native Sensor  |   |
+|   |       (ubat.ps1)       |      |   (tui/ubat_tui.py)   |      | (NVML/WMI/DTT)  |   |
+|   +------------------------+      +-----------------------+      +-----------------+   |
+|               |                               |                                        |
+|               v                               v                                        |
+|   +------------------------+      +-----------------------+      +-----------------+   |
+|   |  Storage & Diagnostics |      |  Battery Optimization |      | Hardware Stress |   |
+|   |   (NVMe / TRIM / SMART)|      |  (PowerPlan / ASPM)   |      |  (CPU/GPU/RAM)  |   |
+|   +------------------------+      +-----------------------+      +-----------------+   |
++----------------------------------------------------------------------------------------+
 ```
 
 ---
@@ -37,11 +37,11 @@ OMNI (Unified Battery & System Optimization Suite) is an engineering-grade hardw
   - DDR5 High-Bandwidth Memory (utilization, active commit charge).
   - NVMe SSD PCIe 4.0 Storage (read/write speed, SMART wear level, controller health).
 
-### 2.3 Hardware Benchmark & Stress Engine (`diagnostics/BenchmarkEngine.ps1`)
+### 2.3 Hardware Benchmark & Stress Engine (`diagnostics/BenchmarkEngine.ps1` & `diagnostics/bench_engine.py`)
 - **Storage Read Throughput**: High-speed sequential and 4K random read tests with live MB/s measurement.
 - **Multi-Core CPU Thermal Stress**: Multi-threaded mathematical saturation across all logical cores with throttle monitoring.
 - **CUDA GPU Hardware Stress**: Matrix-multiplication stress on dedicated NVIDIA GPU with 524,288 threads.
-- **Physical RAM Saturation**: Allocates and churns up to 95% of physical DDR5 memory to verify stability under extreme memory bus load.
+- **Physical RAM Saturation**: Allocates and churns memory buffers to verify stability under extreme memory bus load.
 
 ### 2.4 Battery & Power Optimization (`optimizer/BatteryOptimizer.ps1` & `optimizer/PowerOptimizer.ps1`)
 - **Health Calibration**: Computes real-world wear level from factory design capacity vs full charge capacity.
@@ -52,7 +52,7 @@ OMNI (Unified Battery & System Optimization Suite) is an engineering-grade hardw
 ## 3. UI/TUI Design System
 
 OMNI features a **Deep Modern Enclosed Container Card Frame**:
-- **Border Geometry**: Rounded corners (`╭`, `╮`, `╰`, `╯`) with structural tee dividers (`├`, `┤`) and rails (`│`, `─`).
-- **Column Alignment**: Dynamic padding ensures all separators (`─`) and descriptions line up in a single vertical column regardless of title length.
+- **Border Geometry**: Container cards with structural tee dividers and rails.
+- **Column Alignment**: Dynamic padding ensures all separators and descriptions line up in a single vertical column regardless of title length.
 - **Responsive Geometry**: Dynamically adapts between 40 and 102 columns based on live terminal dimensions.
-- **No Numbers / Direct Keyboard Navigation**: Seamless navigation via `[↑/↓]` Arrow keys, `[Enter/Space]` selection, and `[Esc/Q]` exit.
+- **No Numbers / Direct Keyboard Navigation**: Seamless navigation via `[Up / Down]` Arrow keys, `[Enter / Space]` selection, and `[Esc / Q]` exit.
